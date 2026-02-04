@@ -1,0 +1,93 @@
+name: SWE-bench Pro Evaluation
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_id:
+        description: 'Task ID to run'
+        required: true
+        default: 'internetarchive__openlibrary-c4eebe6677acc4629cb541a98d5e91311444f5d4'
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    container:
+      image: manojva/openlibrary-python312:latest
+      options: --user root
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        run: |
+          echo "Setting up environment..."
+          apt-get update && apt-get install -y git
+
+      - name: Clone and setup OpenLibrary repository
+        working-directory: /testbed
+        run: |
+          # Clone the repository
+          git clone https://github.com/internetarchive/openlibrary.git .
+
+          # Apply setup commands from task.yaml
+          git reset --hard 84cc4ed5697b83a849e9106a09bfed501169cc20
+          git clean -fd
+          git checkout 84cc4ed5697b83a849e9106a09bfed501169cc20
+          git checkout c4eebe6677acc4629cb541a98d5e91311444f5d4 -- openlibrary/tests/core/test_imports.py
+
+      - name: Run pre-verification tests (should fail)
+        id: pre_verification
+        working-directory: /testbed
+        continue-on-error: true
+        run: |
+          echo "Running pre-verification tests..."
+          python -m pytest openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending -xvs > /tmp/pre_verification.log 2>&1 || true
+          cat /tmp/pre_verification.log
+
+      - name: Run Claude to generate fixes
+        env:
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+        working-directory: /testbed
+        run: |
+          echo "Running Claude..."
+          # Copy your run_claude.py script here
+          cp $GITHUB_WORKSPACE/scripts/run_claude.py .
+
+          # Run Claude with the task instruction
+          python run_claude.py --task-file $GITHUB_WORKSPACE/task.yaml
+
+      - name: Generate patch file
+        working-directory: /testbed
+        run: |
+          git diff > /tmp/changes.patch
+          cat /tmp/changes.patch
+
+      - name: Run post-verification tests (should pass)
+        id: post_verification
+        working-directory: /testbed
+        run: |
+          echo "Running post-verification tests..."
+          python -m pytest openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending -xvs > /tmp/post_verification.log 2>&1
+          cat /tmp/post_verification.log
+
+      - name: Extract metrics
+        working-directory: /testbed
+        run: |
+          # Copy extract_metrics.py script
+          cp $GITHUB_WORKSPACE/scripts/extract_metrics.py .
+
+          # Generate result.json
+          python extract_metrics.py
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: evaluation-results
+          path: |
+            /tmp/agent.log
+            /tmp/result.json
+            /tmp/pre_verification.log
+            /tmp/post_verification.log
+            /tmp/changes.patch
+            /tmp/prompts.md
