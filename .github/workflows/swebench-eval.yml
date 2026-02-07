@@ -27,7 +27,7 @@ jobs:
 
       - name: Setup environment
         run: |
-          echo "Setting up environment..." 
+          echo "Setting up environment..."
           apt-get update && apt-get install -y git
           pip install anthropic
 
@@ -44,7 +44,8 @@ jobs:
         working-directory: /testbed
         continue-on-error: true
         run: |
-          python -m pytest openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending -xvs > /tmp/pre_verification.log 2>&1 || true
+          cd /testbed
+          python -m pytest -k test_find_staged_or_pending -xvs > /tmp/pre_verification.log 2>&1 || true
           cat /tmp/pre_verification.log
 
       - name: Run Claude to generate fixes
@@ -63,7 +64,8 @@ jobs:
       - name: Run post-verification tests
         working-directory: /testbed
         run: |
-          python -m pytest openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending -xvs > /tmp/post_verification.log 2>&1
+          cd /testbed
+          python -m pytest -k test_find_staged_or_pending -xvs > /tmp/post_verification.log 2>&1
           cat /tmp/post_verification.log
 
       - name: Extract metrics
