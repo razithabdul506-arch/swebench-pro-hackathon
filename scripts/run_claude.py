@@ -46,12 +46,18 @@ def main():
 
     # 🔥 MODEL UPDATE: Using the specific version requested in the PDF
     # If this fails, replace with 'claude-3-5-sonnet-20241022'
+    # Use the stable model to remove the deprecation warning
     response = client.messages.create(
-        model="claude-3-7-sonnet-latest", 
+        model="claude-3-7-sonnet-20250219", 
         max_tokens=4096,
+        system="""You are a senior staff engineer. 
+        IMPORTANT: When you use 'write_file', you must provide the FULL file content. 
+        Do not truncate the code. You must ensure 'ResultSet' is imported (from infogami.queries) 
+        and 'STAGED_SOURCES' is defined as a constant.
+        The final code must be syntactically perfect so pytest can collect the tests.""",
         tools=[{
             "name": "write_file",
-            "description": "Write content to a file to apply the fix",
+            "description": "Overwrite the file with the full, fixed content.",
             "input_schema": {
                 "type": "object",
                 "properties": {
