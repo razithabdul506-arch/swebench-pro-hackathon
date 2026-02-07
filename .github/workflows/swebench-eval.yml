@@ -13,15 +13,15 @@ jobs:
 
     steps:
 
-      # ===============================
+      # ==================================
       # Checkout YOUR repo
-      # ===============================
+      # ==================================
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ===============================
+      # ==================================
       # Verify container
-      # ===============================
+      # ==================================
       - name: Verify Docker Environment
         run: |
           echo "Inside Docker Container"
@@ -29,53 +29,62 @@ jobs:
           pwd
           ls
 
-      # ===============================
-      # Basic setup (ONLY core deps here)
-      # ===============================
-      - name: Setup base environment
+      # ==================================
+      # 🔥 Setup dependencies (CORRECT ORDER)
+      # ==================================
+      - name: Setup environment
         run: |
           apt-get update
           apt-get install -y git
-          pip install "anthropic==0.34.2" "httpx==0.27.0" web.py Cython
 
-      # ===============================
-      # Clone OpenLibrary
-      # ===============================
+          # IMPORTANT: Install Claude SDK compatible version
+          pip install "anthropic==0.25.0"
+
+          # Required base deps
+          pip install web.py Cython
+
+      # ==================================
+      # Clone OpenLibrary + infogami
+      # ==================================
       - name: Clone OpenLibrary repository
         run: |
           mkdir -p /testbed
           cd /testbed
 
-          # Clone OpenLibrary
           git clone https://github.com/internetarchive/openlibrary.git .
 
           git reset --hard 84cc4ed5697b83a849e9106a09bfed501169cc20
           git clean -fd
           git checkout c4eebe6677acc4629cb541a98d5e91311444f5d4 -- openlibrary/tests/core/test_imports.py
 
-          # 🔥 FORCE CLEAN infogami
-          rm -rf infogami || true
-
-          echo "Cloning infogami dependency..."
-          git clone https://github.com/internetarchive/infogami.git infogami
-
           echo "Repo ready"
           ls
 
+          # 🔥 Clone infogami dependency (SAFE)
+          if [ ! -d "infogami/.git" ]; then
+            echo "Cloning infogami..."
+            rm -rf infogami
+            git clone https://github.com/internetarchive/infogami.git infogami
+          else
+            echo "infogami already exists"
+          fi
 
-      # ===============================
-      # 🔥 INSTALL TEST DEPENDENCIES (FIXED LOCATION)
-      # ===============================
-      - name: Install OpenLibrary test dependencies
+      # ==================================
+      # Install OpenLibrary dependencies
+      # ==================================
+      - name: Install OpenLibrary dependencies
         run: |
           cd /testbed
+
           pip install -r requirements.txt
           pip install -r requirements_test.txt
+
+          # install infogami locally
           pip install ./infogami
 
-      # ===============================
-      # PRE VERIFICATION
-      # ===============================
+      # ==================================
+      # PRE-VERIFICATION TEST
+      # ==================================
       - name: Run pre-verification tests
         continue-on-error: true
         run: |
@@ -83,10 +92,10 @@ jobs:
           python -m pytest -k test_find_staged_or_pending -xvs > /tmp/pre_verification.log 2>&1 || true
           cat /tmp/pre_verification.log
 
-      # ===============================
-      # RUN CLAUDE
-      # ===============================
-      - name: Run Claude agent
+      # ==================================
+      # RUN CLAUDE AGENT
+      # ==================================
+      - name: Run Claude to generate fixes
         env:
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
         run: |
@@ -94,36 +103,36 @@ jobs:
           cp $GITHUB_WORKSPACE/scripts/run_claude.py .
           python run_claude.py --task-file $GITHUB_WORKSPACE/task.yaml
 
-      # ===============================
+      # ==================================
       # SAVE PATCH
-      # ===============================
-      - name: Generate patch
+      # ==================================
+      - name: Generate patch file
         run: |
           cd /testbed
           git diff > /tmp/changes.patch
           cat /tmp/changes.patch
 
-      # ===============================
-      # POST VERIFICATION
-      # ===============================
+      # ==================================
+      # POST-VERIFICATION TEST
+      # ==================================
       - name: Run post-verification tests
         run: |
           cd /testbed
           python -m pytest -k test_find_staged_or_pending -xvs > /tmp/post_verification.log 2>&1
           cat /tmp/post_verification.log
 
-      # ===============================
-      # METRICS
-      # ===============================
+      # ==================================
+      # Extract Metrics
+      # ==================================
       - name: Extract metrics
         run: |
           cd /testbed
           cp $GITHUB_WORKSPACE/scripts/extract_metrics.py .
           python extract_metrics.py
 
-      # ===============================
-      # UPLOAD RESULTS
-      # ===============================
+      # ==================================
+      # Upload Artifacts
+      # ==================================
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
