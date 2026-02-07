@@ -42,20 +42,24 @@ def main():
         with open(target_file, 'r') as f:
             current_content = f.read()
 
-    instruction = f"Task: {task['description']}\n\nFile: {target_file}\nCurrent Content:\n{current_content}"
-
-    with open(PROMPTS_MD_PATH, "w") as f:
-        f.write(f"# Context\n\n{instruction}")
+    instruction = f"""
+    HACKATHON TASK: Fix the find_staged_or_pending method.
+    The goal is to ensure the method returns a ResultSet instead of a list.
+    
+    File to modify: {target_file}
+    Current Content:
+    {current_content}
+    """
 
     log_to_agent({"type": "request", "content": instruction})
 
     response = client.messages.create(
         model="claude-3-7-sonnet-20250219",
         max_tokens=4096,
-        system="""You are a senior staff engineer. 
-        IMPORTANT: When modifying files, you must provide the FULL file content. 
-        Ensure 'ResultSet' is imported from 'infogami.queries'.
-        The code must be syntactically perfect for pytest collection.""",
+        system="""You are a senior engineer. 
+        1. When modifying files, provide the FULL file content via write_file. 
+        2. You MUST ensure 'from infogami.queries import ResultSet' is at the top.
+        3. The find_staged_or_pending method must return 'ResultSet(items)'.""",
         tools=[{
             "name": "write_file",
             "description": "Overwrite the file with full corrected content.",
@@ -71,13 +75,11 @@ def main():
         messages=[{"role": "user", "content": instruction}],
     )
 
-    log_to_agent({"type": "response", "content": str(response.content)})
-
     if response.stop_reason == "tool_use":
         for block in response.content:
             if block.type == "tool_use" and block.name == "write_file":
                 res = write_file(block.input["file_path"], block.input["content"])
-                log_to_agent({"type": "tool_use", "tool": "write_file", "result": res})
+                log_to_agent({"type": "tool_use", "result": res})
 
 if __name__ == "__main__":
     main()
