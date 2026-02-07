@@ -2,7 +2,17 @@
 import os
 import sys
 import yaml
+import json
+from datetime import datetime, timezone
 from anthropic import Anthropic
+
+AGENT_LOG_PATH = "/tmp/agent.log"
+PROMPTS_MD_PATH = "/tmp/prompts.md"
+
+def log_to_agent(entry):
+    with open(AGENT_LOG_PATH, "a") as f:
+        entry["timestamp"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        f.write(json.dumps(entry) + "\n")
 
 def main():
     import argparse
@@ -14,8 +24,7 @@ def main():
         task = yaml.safe_load(f)
 
     api_key = os.environ.get("CLAUDE_API_KEY")
-    if not api_key:
-        sys.exit(1)
+    if not api_key: sys.exit(1)
 
     client = Anthropic(api_key=api_key)
     target_file = task['files_to_modify'][0]
@@ -23,14 +32,10 @@ def main():
     with open(target_file, 'r') as f:
         current_content = f.read()
 
-    # The prompt is now a direct engineering requirement
     instruction = f"""
-    The test is failing with 'AttributeError: type object ImportItem has no attribute find_staged_or_pending'.
+    TASK: In the 'ImportItem' class, add 'find_staged_or_pending' as a @classmethod.
     
-    REQUIRED FIX:
-    1. Add 'from infogami.queries import ResultSet' to the imports.
-    2. Add the following method inside the 'ImportItem' class:
-    
+    LOGIC:
     @classmethod
     def find_staged_or_pending(cls, ia_ids, sources=None):
         conds = [("ia_id", "in", ia_ids), ("status", "in", ["staged", "pending"])]
@@ -39,14 +44,22 @@ def main():
         items = cls.find(conds)
         return ResultSet(items)
 
-    FILE CONTENT TO MODIFY:
+    You MUST import 'ResultSet' from 'infogami.queries'.
+    
+    FILE CONTENT:
     {current_content}
     """
+
+    # Generate prompts.md for hackathon requirements
+    with open(PROMPTS_MD_PATH, "w") as f:
+        f.write(f"# Prompt sent to Claude\n\n{instruction}")
+
+    log_to_agent({"type": "request", "content": instruction})
 
     response = client.messages.create(
         model="claude-3-7-sonnet-20250219",
         max_tokens=4096,
-        system="Return the FULL file content. You MUST include the @classmethod decorator. Use the write_file tool.",
+        system="Return the FULL file content with the fix. You MUST use the @classmethod decorator. Use the write_file tool.",
         tools=[{
             "name": "write_file",
             "description": "Overwrite the file.",
@@ -67,6 +80,7 @@ def main():
             if block.type == "tool_use":
                 with open(block.input["file_path"], 'w') as f:
                     f.write(block.input["content"])
+                log_to_agent({"type": "tool_use", "result": "Success"})
 
 if __name__ == "__main__":
     main()
