@@ -68,14 +68,23 @@ def run_bash(command: str):
     log_to_agent({"type":"tool_use","tool":"run_bash","args":{"command":command}})
     return {"stdout":result.stdout,"stderr":result.stderr,"returncode":result.returncode}
 
-def execute_tool(name,args):
-    if name=="read_file": return read_file(**args)
-    if name=="write_file": return write_file(**args)
-    if name=="edit_file":
-    args.setdefault("old_text","")
-    return edit_file(**args)
-    if name=="run_bash": return run_bash(**args)
-    return {"error":"unknown tool"}
+def execute_tool(name, args):
+    if name == "read_file":
+        return read_file(**args)
+
+    if name == "write_file":
+        return write_file(**args)
+
+    if name == "edit_file":
+        args.setdefault("old_text", "")
+        args.setdefault("new_text", "")
+        return edit_file(**args)
+
+    if name == "run_bash":
+        return run_bash(**args)
+
+    return {"error": "unknown tool"}
+
 
 
 # ================= MAIN =================
