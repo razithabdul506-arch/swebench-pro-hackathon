@@ -21,7 +21,6 @@ def log_to_agent(entry: Dict[str, Any]):
     with open(AGENT_LOG_PATH, "a") as f:
         f.write(json.dumps(entry) + "\n")
 
-    # readable prompts.md
     try:
         with open(PROMPTS_PATH, "a") as md:
             if entry["type"] == "request":
@@ -68,7 +67,6 @@ def run_bash(command: str):
     result = subprocess.run(command,shell=True,capture_output=True,text=True)
     log_to_agent({"type":"tool_use","tool":"run_bash","args":{"command":command}})
     return {"stdout":result.stdout,"stderr":result.stderr,"returncode":result.returncode}
-
 
 def execute_tool(name,args):
     if name=="read_file": return read_file(**args)
@@ -124,32 +122,37 @@ Files to modify:
     for _ in range(30):
 
         response = client.messages.create(
-            model="claude-opus-4-6",
-            max_tokens=8192,
+            model="claude-3-haiku-20240307",   # ✅ SAFE MODEL
+            max_tokens=4096,
             messages=messages,
             tools=tools
         )
 
-        text = ""
+        text=""
         if response.content and hasattr(response.content[0], "text"):
             text = response.content[0].text
 
         log_to_agent({"type":"response","content":text})
 
-        if response.stop_reason=="tool_use":
-            tool_call=response.content[-1]
-            result=execute_tool(tool_call.name,tool_call.input)
+        if response.stop_reason == "tool_use":
+            tool_call = response.content[-1]
+            result = execute_tool(tool_call.name, tool_call.input)
 
             messages.append({"role":"assistant","content":response.content})
             messages.append({
                 "role":"user",
-                "content":[{"type":"tool_result","tool_use_id":tool_call.id,"content":json.dumps(result)}]
+                "content":[
+                    {
+                        "type":"tool_result",
+                        "tool_use_id":tool_call.id,
+                        "content":json.dumps(result)
+                    }
+                ]
             })
         else:
             break
 
     print("Claude run complete.")
-
 
 if __name__=="__main__":
     main()
