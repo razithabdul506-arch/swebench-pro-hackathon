@@ -12,7 +12,7 @@ jobs:
   evaluate:
     runs-on: ubuntu-latest
 
-    # 🔥 THIS IS DOCKER — runs everything inside container
+    # 🔥 EVERYTHING RUNS INSIDE DOCKER CONTAINER
     container:
       image: manojva/openlibrary-python312:latest
       options: --user root
@@ -43,6 +43,7 @@ jobs:
           apt-get update
           apt-get install -y git
           pip install anthropic
+          pip install Cython
 
       # ===============================
       # Clone OpenLibrary into /testbed
@@ -58,6 +59,9 @@ jobs:
           git clean -fd
           git checkout 84cc4ed5697b83a849e9106a09bfed501169cc20
           git checkout c4eebe6677acc4629cb541a98d5e91311444f5d4 -- openlibrary/tests/core/test_imports.py
+
+          echo "Installing OpenLibrary dependencies..."
+          pip install -e .
 
           echo "OpenLibrary ready"
           ls
@@ -80,7 +84,6 @@ jobs:
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
         run: |
           cd /testbed
-
           cp $GITHUB_WORKSPACE/scripts/run_claude.py .
           python run_claude.py --task-file $GITHUB_WORKSPACE/task.yaml
 
