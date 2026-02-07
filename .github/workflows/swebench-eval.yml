@@ -7,7 +7,6 @@ jobs:
   evaluate:
     runs-on: ubuntu-latest
 
-    # 🔥 EVERYTHING runs inside Docker automatically
     container:
       image: manojva/openlibrary-python312:latest
       options: --user root
@@ -21,7 +20,7 @@ jobs:
         uses: actions/checkout@v4
 
       # ===============================
-      # Verify Docker
+      # Verify container
       # ===============================
       - name: Verify Docker Environment
         run: |
@@ -31,26 +30,18 @@ jobs:
           ls
 
       # ===============================
-      # Install ALL dependencies safely
+      # Basic setup (ONLY core deps here)
       # ===============================
-      - name: Setup environment
+      - name: Setup base environment
         run: |
           apt-get update
           apt-get install -y git
-
-          # Claude SDK
-          pip install anthropic
-
-          # OpenLibrary runtime deps missing from image
-          pip install web.py Cython
-
-          pip install -r requirements_test.txt
- 
+          pip install anthropic web.py Cython
 
       # ===============================
       # Clone OpenLibrary
       # ===============================
-      - name: Clone and setup OpenLibrary repository
+      - name: Clone OpenLibrary repository
         run: |
           mkdir -p /testbed
           cd /testbed
@@ -59,52 +50,56 @@ jobs:
 
           git reset --hard 84cc4ed5697b83a849e9106a09bfed501169cc20
           git clean -fd
-          git checkout 84cc4ed5697b83a849e9106a09bfed501169cc20
           git checkout c4eebe6677acc4629cb541a98d5e91311444f5d4 -- openlibrary/tests/core/test_imports.py
 
-          echo "OpenLibrary ready"
+          echo "Repo ready"
           ls
 
       # ===============================
-      # PRE TEST (Expected FAIL)
+      # 🔥 INSTALL TEST DEPENDENCIES (FIXED LOCATION)
+      # ===============================
+      - name: Install OpenLibrary test dependencies
+        run: |
+          cd /testbed
+          pip install -r requirements.txt
+          pip install -r requirements_test.txt
+
+      # ===============================
+      # PRE VERIFICATION
       # ===============================
       - name: Run pre-verification tests
         continue-on-error: true
         run: |
           cd /testbed
-          export PYTHONPATH=/testbed:$PYTHONPATH
           python -m pytest -k test_find_staged_or_pending -xvs > /tmp/pre_verification.log 2>&1 || true
           cat /tmp/pre_verification.log
 
       # ===============================
-      # RUN CLAUDE AGENT
+      # RUN CLAUDE
       # ===============================
-      - name: Run Claude to generate fixes
+      - name: Run Claude agent
         env:
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
         run: |
           cd /testbed
-          export PYTHONPATH=/testbed:$PYTHONPATH
-
           cp $GITHUB_WORKSPACE/scripts/run_claude.py .
           python run_claude.py --task-file $GITHUB_WORKSPACE/task.yaml
 
       # ===============================
       # SAVE PATCH
       # ===============================
-      - name: Generate patch file
+      - name: Generate patch
         run: |
           cd /testbed
           git diff > /tmp/changes.patch
           cat /tmp/changes.patch
 
       # ===============================
-      # POST TEST (Expected PASS)
+      # POST VERIFICATION
       # ===============================
       - name: Run post-verification tests
         run: |
           cd /testbed
-          export PYTHONPATH=/testbed:$PYTHONPATH
           python -m pytest -k test_find_staged_or_pending -xvs > /tmp/post_verification.log 2>&1
           cat /tmp/post_verification.log
 
@@ -118,7 +113,7 @@ jobs:
           python extract_metrics.py
 
       # ===============================
-      # Upload Results
+      # UPLOAD RESULTS
       # ===============================
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
