@@ -44,6 +44,9 @@ jobs:
           # OpenLibrary runtime deps missing from image
           pip install web.py Cython
 
+          pip install -r requirements_test.txt
+ 
+
       # ===============================
       # Clone OpenLibrary
       # ===============================
