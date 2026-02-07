@@ -17,7 +17,7 @@ jobs:
       - name: Setup environment
         run: |
           apt-get update && apt-get install -y git libxml2-dev libxslt-dev
-          # 🔥 THE "NUCLEAR" INSTALL: Every known dependency to end the error loop
+          # Complete dependency stack including web.py and system tools
           pip install web.py anthropic pyyaml simplejson babel psycopg2-binary \
                       bleach markdown2 python-memcached lxml cryptography
           echo "USER=root" >> $GITHUB_ENV
@@ -25,7 +25,7 @@ jobs:
       - name: Initialize Repositories
         working-directory: /testbed
         run: |
-          # Clean directory thoroughly
+          # Clean the workspace thoroughly
           find . -mindepth 1 -delete
           
           # Clone OpenLibrary
@@ -34,13 +34,19 @@ jobs:
           git clean -fd
           git checkout c4eebe6677acc4629cb541a98d5e91311444f5d4 -- openlibrary/tests/core/test_imports.py
 
-          # Clone and Install Infogami (fixing the directory conflict)
-          rm -rf infogami
-          git clone https://github.com/internetarchive/infogami.git infogami
-          pip install -e infogami
+          # Clone Infogami and handle its nested structure
+          rm -rf infogami_repo
+          git clone https://github.com/internetarchive/infogami.git infogami_repo
           
-          # Force set the PYTHONPATH for both modules
-          echo "PYTHONPATH=/testbed:/testbed/infogami" >> $GITHUB_ENV
+          # 🔥 THE CRITICAL FIX: The python package is at infogami_repo/infogami
+          # We symlink it to the root so 'import infogami' works perfectly
+          ln -s /testbed/infogami_repo/infogami /testbed/infogami
+          
+          # Install it in editable mode from the package root
+          pip install -e /testbed/infogami_repo
+          
+          # Map PYTHONPATH to the testbed root and the infogami source
+          echo "PYTHONPATH=/testbed:/testbed/infogami_repo" >> $GITHUB_ENV
 
       - name: Execute pre-verification
         continue-on-error: true
@@ -63,14 +69,9 @@ jobs:
       - name: Execute post-verification
         working-directory: /testbed
         run: |
-          # Use '|| true' to capture logs and prevent workflow failure before artifact upload
           python -m pytest openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending -v > /tmp/post_verification.log 2>&1 || true
-          
           echo "--- DEBUG LOG ---"
           cat /tmp/post_verification.log
-          echo "--- END DEBUG LOG ---"
-          
-          # Required for scoring
           grep -q "PASSED" /tmp/post_verification.log
 
       - name: Compile metrics
