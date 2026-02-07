@@ -1,14 +1,8 @@
 #!/usr/bin/env python3
 import os
 import sys
-import json
 import yaml
 from anthropic import Anthropic
-
-def write_file(file_path, content):
-    with open(file_path, 'w') as f:
-        f.write(content)
-    return {"success": True}
 
 def main():
     import argparse
@@ -25,20 +19,25 @@ def main():
     with open(target_file, 'r') as f:
         current_content = f.read()
 
-    # We give Claude a very strict role and the specific fix required
-    instruction = f"""TASK: Return 'ResultSet' instead of a list in find_staged_or_pending.
-    FILE: {target_file}
-    CONTENT:
+    # We tell Claude exactly what to do to solve the hackathon requirement
+    instruction = f"""
+    The test fails because find_staged_or_pending returns a list, but it must return a ResultSet.
+    
+    TASK: 
+    1. Add 'from infogami.queries import ResultSet' to the imports.
+    2. Change the return of find_staged_or_pending to 'return ResultSet(items)'.
+    
+    FILE CONTENT:
     {current_content}
     """
 
     response = client.messages.create(
         model="claude-3-7-sonnet-20250219",
         max_tokens=4096,
-        system="You are a senior dev. Use 'write_file' to return the FULL file content. Ensure 'from infogami.queries import ResultSet' is present and the method returns 'ResultSet(items)'.",
+        system="Return the FULL file content with the fix. Do not use snippets.",
         tools=[{
             "name": "write_file",
-            "description": "Save the fixed file.",
+            "description": "Overwrite the file.",
             "input_schema": {
                 "type": "object",
                 "properties": {
@@ -52,8 +51,9 @@ def main():
     )
 
     for block in response.content:
-        if block.type == "tool_use" and block.name == "write_file":
-            write_file(block.input["file_path"], block.input["content"])
+        if block.type == "tool_use":
+            with open(block.input["file_path"], 'w') as f:
+                f.write(block.input["content"])
 
 if __name__ == "__main__":
     main()
