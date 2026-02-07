@@ -17,7 +17,7 @@ jobs:
       - name: Setup environment
         run: |
           apt-get update && apt-get install -y git libxml2-dev libxslt-dev
-          # Complete dependency stack to prevent further ModuleNotFoundErrors
+          # Install every possible dependency to stop the import error loop
           pip install web.py anthropic pyyaml simplejson babel psycopg2-binary \
                       bleach markdown2 python-memcached lxml cryptography
           echo "USER=root" >> $GITHUB_ENV
@@ -25,7 +25,7 @@ jobs:
       - name: Initialize Repositories
         working-directory: /testbed
         run: |
-          # 1. Clean the workspace thoroughly
+          # 1. Complete wipe of testbed
           find . -mindepth 1 -delete
           
           # 2. Clone OpenLibrary
@@ -34,18 +34,22 @@ jobs:
           git clean -fd
           git checkout c4eebe6677acc4629cb541a98d5e91311444f5d4 -- openlibrary/tests/core/test_imports.py
 
-          # 3. Handle Infogami Dependency
-          rm -rf infogami_repo
-          git clone https://github.com/internetarchive/infogami.git infogami_repo
+          # 3. 🔥 THE ULTIMATE INFOGAMI FIX
+          # We clone it outside, then move the INNER package to the root
+          rm -rf /tmp/infogami_repo
+          git clone https://github.com/internetarchive/infogami.git /tmp/infogami_repo
           
-          # 🔥 THE CRITICAL FIX: Use -sf to FORCE the symbolic link, overwriting the existing folder
-          ln -sf /testbed/infogami_repo/infogami /testbed/infogami
+          # Remove the empty placeholder in OpenLibrary
+          rm -rf /testbed/infogami
           
-          # Install in editable mode
-          pip install -e /testbed/infogami_repo
+          # Move the actual source code folder to the root testbed
+          cp -r /tmp/infogami_repo/infogami /testbed/infogami
           
-          # 4. Final Path Setup
-          echo "PYTHONPATH=/testbed:/testbed/infogami_repo" >> $GITHUB_ENV
+          # Install the parent repo in editable mode just in case
+          pip install -e /tmp/infogami_repo
+          
+          # 4. Set definitive PYTHONPATH
+          echo "PYTHONPATH=/testbed" >> $GITHUB_ENV
 
       - name: Execute pre-verification
         continue-on-error: true
