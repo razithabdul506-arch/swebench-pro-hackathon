@@ -3,7 +3,7 @@ import os
 import sys
 import json
 import yaml
-from datetime import datetime
+from datetime import datetime, timezone
 from anthropic import Anthropic
 
 AGENT_LOG_PATH = "/tmp/agent.log"
@@ -11,7 +11,7 @@ PROMPTS_MD_PATH = "/tmp/prompts.md"
 
 def log_to_agent(entry):
     with open(AGENT_LOG_PATH, "a") as f:
-        entry["timestamp"] = datetime.utcnow().isoformat() + "Z"
+        entry["timestamp"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         f.write(json.dumps(entry) + "\n")
 
 def write_file(file_path, content):
@@ -28,22 +28,21 @@ def main():
     parser.add_argument("--task-file", required=True)
     args = parser.parse_args()
 
-    task = yaml.safe_load(open(args.task_file))
+    task = yaml.safe_load(open(args.task_file, 'r'))
     api_key = os.environ.get("CLAUDE_API_KEY")
     if not api_key:
-        sys.exit("Missing CLAUDE_API_KEY")
+        sys.exit(1)
 
     client = Anthropic(api_key=api_key)
     prompt = f"Task: {task['description']}\nRequirements: {task['requirements']}\nInterface: {task['interface']}"
 
-    # Write prompts.md artifact
     with open(PROMPTS_MD_PATH, "w") as f:
-        f.write(f"# Prompt sent to Claude\n\n{prompt}")
+        f.write(f"# Prompt context\n\n{prompt}")
 
     log_to_agent({"type": "request", "content": prompt})
 
     response = client.messages.create(
-        model="claude-3-5-sonnet-20241022",
+        model="claude-3-5-sonnet-latest",
         max_tokens=4096,
         tools=[{
             "name": "write_file",
