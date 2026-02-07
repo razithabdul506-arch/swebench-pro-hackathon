@@ -2,17 +2,12 @@ name: SWE-bench Pro Evaluation
 
 on:
   workflow_dispatch:
-    inputs:
-      task_id:
-        description: 'Task ID to run'
-        required: true
-        default: 'internetarchive__openlibrary-c4eebe6677acc4629cb541a98d5e91311444f5d4'
 
 jobs:
   evaluate:
     runs-on: ubuntu-latest
 
-    # 🔥 EVERYTHING runs inside this Docker container
+    # 🔥 EVERYTHING runs inside Docker automatically
     container:
       image: manojva/openlibrary-python312:latest
       options: --user root
@@ -20,13 +15,13 @@ jobs:
     steps:
 
       # ===============================
-      # Checkout YOUR repo (scripts + yaml)
+      # Checkout YOUR repo
       # ===============================
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # ===============================
-      # Verify Docker container
+      # Verify Docker
       # ===============================
       - name: Verify Docker Environment
         run: |
@@ -36,16 +31,21 @@ jobs:
           ls
 
       # ===============================
-      # Install ONLY required deps
+      # Install ALL dependencies safely
       # ===============================
       - name: Setup environment
         run: |
           apt-get update
           apt-get install -y git
-          pip install anthropic web.py Cython
+
+          # Claude SDK
+          pip install anthropic
+
+          # OpenLibrary runtime deps missing from image
+          pip install web.py Cython
 
       # ===============================
-      # Clone OpenLibrary into /testbed
+      # Clone OpenLibrary
       # ===============================
       - name: Clone and setup OpenLibrary repository
         run: |
@@ -63,12 +63,13 @@ jobs:
           ls
 
       # ===============================
-      # PRE VERIFICATION (EXPECTED FAIL)
+      # PRE TEST (Expected FAIL)
       # ===============================
       - name: Run pre-verification tests
         continue-on-error: true
         run: |
           cd /testbed
+          export PYTHONPATH=/testbed:$PYTHONPATH
           python -m pytest -k test_find_staged_or_pending -xvs > /tmp/pre_verification.log 2>&1 || true
           cat /tmp/pre_verification.log
 
@@ -80,6 +81,8 @@ jobs:
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
         run: |
           cd /testbed
+          export PYTHONPATH=/testbed:$PYTHONPATH
+
           cp $GITHUB_WORKSPACE/scripts/run_claude.py .
           python run_claude.py --task-file $GITHUB_WORKSPACE/task.yaml
 
@@ -93,16 +96,17 @@ jobs:
           cat /tmp/changes.patch
 
       # ===============================
-      # POST VERIFICATION (EXPECTED PASS)
+      # POST TEST (Expected PASS)
       # ===============================
       - name: Run post-verification tests
         run: |
           cd /testbed
+          export PYTHONPATH=/testbed:$PYTHONPATH
           python -m pytest -k test_find_staged_or_pending -xvs > /tmp/post_verification.log 2>&1
           cat /tmp/post_verification.log
 
       # ===============================
-      # METRICS EXTRACTION
+      # METRICS
       # ===============================
       - name: Extract metrics
         run: |
@@ -111,7 +115,7 @@ jobs:
           python extract_metrics.py
 
       # ===============================
-      # UPLOAD ARTIFACTS
+      # Upload Results
       # ===============================
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
