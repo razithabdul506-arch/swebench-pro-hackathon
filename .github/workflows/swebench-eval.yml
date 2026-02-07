@@ -16,10 +16,18 @@ jobs:
       options: --user root
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify Docker Environment
+        run: |
+          echo "Inside container"
+          python --version
+          pwd
 
       - name: Setup environment
         run: |
+          echo "Setting up environment..." 
           apt-get update && apt-get install -y git
           pip install anthropic
 
