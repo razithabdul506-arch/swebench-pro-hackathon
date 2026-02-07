@@ -15,6 +15,7 @@ def log_to_agent(entry):
         f.write(json.dumps(entry) + "\n")
 
 def write_file(file_path, content):
+    """Core tool for applying the code fix."""
     try:
         with open(file_path, 'w') as f:
             f.write(content)
@@ -36,7 +37,7 @@ def main():
 
     client = Anthropic(api_key=api_key)
     
-    # Context Loading
+    # Context Loading: Give Claude the current file to prevent hallucinations
     target_file = task['files_to_modify'][0]
     current_content = ""
     if os.path.exists(target_file):
@@ -46,17 +47,21 @@ def main():
     instruction = f"Task: {task['description']}\n\nFile: {target_file}\nCurrent Content:\n{current_content}"
 
     with open(PROMPTS_MD_PATH, "w") as f:
-        f.write(f"# Context\n\n{instruction}")
+        f.write(f"# Context Provided to Claude\n\n{instruction}")
 
     log_to_agent({"type": "request", "content": instruction})
 
+    # Call the production stable model
     response = client.messages.create(
-        model="claude-3-7-sonnet-20250219",
+        model="claude-3-7-sonnet-20250219", 
         max_tokens=4096,
-        system="You are a senior engineer. Return the FULL file content when using write_file. Do not truncate. Ensure 'ResultSet' is imported from 'infogami.queries'.",
+        system="""You are a senior staff engineer. 
+        IMPORTANT: When you use 'write_file', you must provide the FULL file content. 
+        Ensure 'ResultSet' is imported from 'infogami.queries'.
+        The code must be syntactically perfect so pytest can collect the tests.""",
         tools=[{
             "name": "write_file",
-            "description": "Overwrite the file with full corrected content.",
+            "description": "Overwrite the file with the full, fixed content.",
             "input_schema": {
                 "type": "object",
                 "properties": {
@@ -75,7 +80,12 @@ def main():
         for block in response.content:
             if block.type == "tool_use" and block.name == "write_file":
                 res = write_file(block.input["file_path"], block.input["content"])
-                log_to_agent({"type": "tool_use", "tool": "write_file", "result": res})
+                log_to_agent({
+                    "type": "tool_use", 
+                    "tool": "write_file", 
+                    "args": block.input, 
+                    "result": res
+                })
 
 if __name__ == "__main__":
     main()
