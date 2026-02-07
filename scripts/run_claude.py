@@ -33,9 +33,13 @@ def main():
         current_content = f.read()
 
     instruction = f"""
-    TASK: In the 'ImportItem' class, add 'find_staged_or_pending' as a @classmethod.
+    DEBUG: The test fails with 'AttributeError: type object ImportItem has no attribute find_staged_or_pending'.
     
-    LOGIC:
+    TASK: 
+    1. Import 'ResultSet' from 'infogami.queries'.
+    2. ADD the following method to the 'ImportItem' class. 
+    3. IMPORTANT: Ensure it is a @classmethod.
+    
     @classmethod
     def find_staged_or_pending(cls, ia_ids, sources=None):
         conds = [("ia_id", "in", ia_ids), ("status", "in", ["staged", "pending"])]
@@ -44,22 +48,19 @@ def main():
         items = cls.find(conds)
         return ResultSet(items)
 
-    You MUST import 'ResultSet' from 'infogami.queries'.
-    
-    FILE CONTENT:
+    Current File Content:
     {current_content}
     """
 
-    # Generate prompts.md for hackathon requirements
     with open(PROMPTS_MD_PATH, "w") as f:
-        f.write(f"# Prompt sent to Claude\n\n{instruction}")
+        f.write(f"# AI Instructions\n\n{instruction}")
 
     log_to_agent({"type": "request", "content": instruction})
 
     response = client.messages.create(
         model="claude-3-7-sonnet-20250219",
         max_tokens=4096,
-        system="Return the FULL file content with the fix. You MUST use the @classmethod decorator. Use the write_file tool.",
+        system="You are a meticulous engineer. Provide the FULL file content. Ensure the ImportItem class remains intact and only the new @classmethod is added correctly.",
         tools=[{
             "name": "write_file",
             "description": "Overwrite the file.",
