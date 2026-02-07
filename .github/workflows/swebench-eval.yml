@@ -53,12 +53,17 @@ jobs:
           git clean -fd
           git checkout c4eebe6677acc4629cb541a98d5e91311444f5d4 -- openlibrary/tests/core/test_imports.py
 
-          # ⭐ VERY IMPORTANT — clone infogami dependency
-          echo "Cloning infogami dependency..."
-          git clone https://github.com/internetarchive/infogami.git infogami
+          # ⭐ Clone infogami ONLY if not already present
+          if [ ! -d "infogami" ]; then
+            echo "Cloning infogami..."
+            git clone https://github.com/internetarchive/infogami.git infogami
+          else
+            echo "infogami already exists — skipping clone"
+          fi
 
           echo "Repo ready"
           ls
+
 
 
       # ===============================
