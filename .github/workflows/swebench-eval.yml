@@ -6,74 +6,71 @@ on:
 jobs:
   evaluate:
     runs-on: ubuntu-latest
-
     container:
       image: manojva/openlibrary-python312:latest
       options: --user root
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup environment
         run: |
-          apt-get update
-          apt-get install -y git
-          pip install web.py Cython
-
-      - name: Clone OpenLibrary repository
-        run: |
-          mkdir -p /testbed
-          cd /testbed
-
-          git clone https://github.com/internetarchive/openlibrary.git .
-
-          git reset --hard 84cc4ed5697b83a849e9106a09bfed501169cc20
-          git clean -fd
-          git checkout c4eebe6677acc4629cb541a98d5e91311444f5d4 -- openlibrary/tests/core/test_imports.py
-
-          rm -rf infogami
-          git clone https://github.com/internetarchive/infogami.git infogami
-
-          # 🔥 INSTALL INFOGAMI PROPERLY
-          pip install -e infogami
-
-          pip install -r requirements.txt
-          pip install -r requirements_test.txt
-
-      - name: Fix USER env
-        run: |
+          apt-get update && apt-get install -y git
+          # USER=root is required for certain OpenLibrary test operations
           echo "USER=root" >> $GITHUB_ENV
 
-      - name: Run pre-verification tests
-        continue-on-error: true
+      - name: Clone and setup OpenLibrary
+        working-directory: /testbed
         run: |
-          cd /testbed
-          python -m pytest openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending -xvs > /tmp/pre_verification.log 2>&1 || true
-          cat /tmp/pre_verification.log
+          git clone https://github.com/internetarchive/openlibrary.git .
+          # Apply exact state from task.yaml
+          git reset --hard 84cc4ed5697b83a849e9106a09bfed501169cc20
+          git clean -fd
+          git checkout 84cc4ed5697b83a849e9106a09bfed501169cc20
+          git checkout c4eebe6677acc4629cb541a98d5e91311444f5d4 -- openlibrary/tests/core/test_imports.py
 
-      # 🔥 TEMPORARILY SKIPPING CLAUDE STEP
-      - name: Skip Claude (API unavailable)
-        run: echo "Claude disabled"
+      - name: Run pre-verification tests (Expect Failure)
+        continue-on-error: true
+        working-directory: /testbed
+        run: |
+          python -m pytest openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending -xvs > /tmp/pre_verification.log 2>&1 || true
+
+      - name: Run AI Agent (Generate Fix)
+        env:
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+        working-directory: /testbed
+        run: |
+          # Copy scripts from your repo to the working directory
+          cp $GITHUB_WORKSPACE/scripts/run_claude.py .
+          # run_claude.py must generate /tmp/agent.log and /tmp/prompts.md
+          python run_claude.py --task-file $GITHUB_WORKSPACE/task.yaml
 
       - name: Generate patch file
+        working-directory: /testbed
         run: |
-          cd /testbed
           git diff > /tmp/changes.patch
-          cat /tmp/changes.patch
 
-      - name: Run post-verification tests
+      - name: Run post-verification tests (Expect Pass)
+        working-directory: /testbed
         run: |
-          cd /testbed
           python -m pytest openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending -xvs > /tmp/post_verification.log 2>&1
-          cat /tmp/post_verification.log
 
-      - name: Upload artifacts
+      - name: Extract metrics and results
+        working-directory: /testbed
+        run: |
+          cp $GITHUB_WORKSPACE/scripts/extract_metrics.py .
+          # Generates /tmp/result.json
+          python extract_metrics.py
+
+      - name: Upload all required artifacts
         uses: actions/upload-artifact@v4
         with:
           name: evaluation-results
           path: |
+            /tmp/agent.log
+            /tmp/result.json
             /tmp/pre_verification.log
             /tmp/post_verification.log
             /tmp/changes.patch
+            /tmp/prompts.md
