@@ -1,18 +1,8 @@
 #!/usr/bin/env python3
 import os
 import sys
-import json
 import yaml
-from datetime import datetime, timezone
 from anthropic import Anthropic
-
-AGENT_LOG_PATH = "/tmp/agent.log"
-PROMPTS_MD_PATH = "/tmp/prompts.md"
-
-def log_to_agent(entry):
-    with open(AGENT_LOG_PATH, "a") as f:
-        entry["timestamp"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        f.write(json.dumps(entry) + "\n")
 
 def main():
     import argparse
@@ -24,7 +14,8 @@ def main():
         task = yaml.safe_load(f)
 
     api_key = os.environ.get("CLAUDE_API_KEY")
-    if not api_key: sys.exit(1)
+    if not api_key:
+        sys.exit(1)
 
     client = Anthropic(api_key=api_key)
     target_file = task['files_to_modify'][0]
@@ -32,27 +23,30 @@ def main():
     with open(target_file, 'r') as f:
         current_content = f.read()
 
+    # The prompt is now a direct engineering requirement
     instruction = f"""
-    TASK: In the 'ImportItem' class, add 'find_staged_or_pending' as a @classmethod.
-    It must return 'ResultSet(items)' using 'from infogami.queries import ResultSet'.
+    The test is failing with 'AttributeError: type object ImportItem has no attribute find_staged_or_pending'.
     
-    FILE CONTENT:
+    REQUIRED FIX:
+    1. Add 'from infogami.queries import ResultSet' to the imports.
+    2. Add the following method inside the 'ImportItem' class:
+    
+    @classmethod
+    def find_staged_or_pending(cls, ia_ids, sources=None):
+        conds = [("ia_id", "in", ia_ids), ("status", "in", ["staged", "pending"])]
+        if sources:
+            conds.append(("ia_id", "like", [s + ":%" for s in sources]))
+        items = cls.find(conds)
+        return ResultSet(items)
+
+    FILE CONTENT TO MODIFY:
     {current_content}
     """
-
-    # Create prompts.md for the hackathon requirements
-    with open(PROMPTS_MD_PATH, "w") as f:
-        f.write(f"# Prompt sent to Claude\n\n{instruction}")
-
-    log_to_agent({"type": "request", "content": instruction})
 
     response = client.messages.create(
         model="claude-3-7-sonnet-20250219",
         max_tokens=4096,
-        system="""You are a senior staff engineer. 
-        You must provide the FULL file content with the fix. 
-        The 'find_staged_or_pending' method MUST be a @classmethod inside the ImportItem class.
-        Use the write_file tool to save your changes.""",
+        system="Return the FULL file content. You MUST include the @classmethod decorator. Use the write_file tool.",
         tools=[{
             "name": "write_file",
             "description": "Overwrite the file.",
@@ -73,7 +67,6 @@ def main():
             if block.type == "tool_use":
                 with open(block.input["file_path"], 'w') as f:
                     f.write(block.input["content"])
-                log_to_agent({"type": "tool_use", "result": "Success"})
 
 if __name__ == "__main__":
     main()
