@@ -17,26 +17,25 @@ jobs:
       - name: Setup environment
         run: |
           apt-get update && apt-get install -y git
-          # Install core requirements
           pip install web.py anthropic pyyaml
           
-          # OpenLibrary requires infogami to be installed in editable mode
+          # Clean and clone infogami
+          rm -rf /testbed/infogami
           mkdir -p /testbed/infogami
           git clone https://github.com/internetarchive/infogami.git /testbed/infogami
           pip install -e /testbed/infogami
           
-          # Set Python path to include both the codebase and our scripts
           echo "PYTHONPATH=/testbed" >> $GITHUB_ENV
           echo "USER=root" >> $GITHUB_ENV
 
       - name: Initialize OpenLibrary repository
         working-directory: /testbed
         run: |
-          git clone https://github.com/internetarchive/openlibrary.git .
+          # Clean the directory to avoid "destination path already exists" error
+          rm -rf ..?* .[!.]* * git clone https://github.com/internetarchive/openlibrary.git .
           git reset --hard 84cc4ed5697b83a849e9106a09bfed501169cc20
           git clean -fd
-          git checkout 84cc4ed5697b83a849e9106a09bfed501169cc20
-          # Ensure test file is present for evaluation
+          # Restore the specific test file needed for evaluation
           git checkout c4eebe6677acc4629cb541a98d5e91311444f5d4 -- openlibrary/tests/core/test_imports.py
 
       - name: Execute pre-verification
