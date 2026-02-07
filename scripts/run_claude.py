@@ -13,38 +13,31 @@ def main():
     with open(args.task_file, 'r') as f:
         task = yaml.safe_load(f)
 
-    client = Anthropic(api_key=os.environ.get("CLAUDE_API_KEY"))
+    api_key = os.environ.get("CLAUDE_API_KEY")
+    if not api_key:
+        sys.exit(1)
+
+    client = Anthropic(api_key=api_key)
     target_file = task['files_to_modify'][0]
     
     with open(target_file, 'r') as f:
         current_content = f.read()
 
-    # We tell Claude exactly what to do to solve the hackathon requirement
     instruction = f"""
-    The test fails because find_staged_or_pending returns a list, but it must return a ResultSet.
-    
-    TASK: 
-    1. Add 'from infogami.queries import ResultSet' to the imports.
-    2. Change the return of find_staged_or_pending to 'return ResultSet(items)'.
+    TASK: In the 'ImportItem' class, add 'find_staged_or_pending' as a @classmethod.
+    It must return 'ResultSet(items)' using 'from infogami.queries import ResultSet'.
     
     FILE CONTENT:
     {current_content}
     """
 
-   response = client.messages.create(
+    response = client.messages.create(
         model="claude-3-7-sonnet-20250219",
         max_tokens=4096,
-        system="""You are a senior staff engineer. 
-        TASK: Add the 'find_staged_or_pending' method to the 'ImportItem' class.
-        
-        CRITICAL INSTRUCTIONS:
-        1. The method MUST be a @classmethod.
-        2. It MUST return a 'ResultSet' object (from infogami.queries).
-        3. You MUST provide the FULL content of the file in the 'write_file' tool.
-        4. Do not remove any existing methods or imports like 'Batch' or 'ImportItem'.""",
+        system="Return the FULL file content with the fix. Use the write_file tool.",
         tools=[{
             "name": "write_file",
-            "description": "Overwrite the file with the full corrected content.",
+            "description": "Overwrite the file.",
             "input_schema": {
                 "type": "object",
                 "properties": {
@@ -55,12 +48,13 @@ def main():
             }
         }],
         messages=[{"role": "user", "content": instruction}],
-    ) 
+    )
 
-    for block in response.content:
-        if block.type == "tool_use":
-            with open(block.input["file_path"], 'w') as f:
-                f.write(block.input["content"])
+    if response.stop_reason == "tool_use":
+        for block in response.content:
+            if block.type == "tool_use":
+                with open(block.input["file_path"], 'w') as f:
+                    f.write(block.input["content"])
 
 if __name__ == "__main__":
     main()
