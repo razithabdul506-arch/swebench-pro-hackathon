@@ -17,28 +17,28 @@ jobs:
       - name: Setup environment
         run: |
           apt-get update && apt-get install -y git libxml2-dev libxslt-dev
-          # Install all core dependencies
+          # Install the base stack
           pip install web.py anthropic pyyaml simplejson babel psycopg2-binary \
                       bleach markdown2 python-memcached lxml cryptography
           
-          # 🔥 THE PERMANENT FIX: Install Infogami directly into Python's path
+          # 🔥 THE "BRUTE FORCE" FIX: 
+          # We clone infogami and copy the internal source directly into Python's site-packages.
+          # This makes 'import infogami' work globally, no matter what.
           rm -rf /tmp/infogami_repo
           git clone https://github.com/internetarchive/infogami.git /tmp/infogami_repo
-          cp -r /tmp/infogami_repo/infogami $(python -c "import site; print(site.getsitepackages()[0])")
+          SITE_PACKAGES=$(python -c "import site; print(site.getsitepackages()[0])")
+          cp -r /tmp/infogami_repo/infogami $SITE_PACKAGES/
           
           echo "USER=root" >> $GITHUB_ENV
 
-      - name: Initialize Repositories
+      - name: Initialize OpenLibrary
         working-directory: /testbed
         run: |
-          # Clean and clone OpenLibrary
           find . -mindepth 1 -delete
           git clone https://github.com/internetarchive/openlibrary.git .
           git reset --hard 84cc4ed5697b83a849e9106a09bfed501169cc20
           git clean -fd
           git checkout c4eebe6677acc4629cb541a98d5e91311444f5d4 -- openlibrary/tests/core/test_imports.py
-          
-          # Set PYTHONPATH to the testbed
           echo "PYTHONPATH=/testbed" >> $GITHUB_ENV
 
       - name: Execute pre-verification
