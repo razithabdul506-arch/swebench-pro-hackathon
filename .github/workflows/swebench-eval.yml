@@ -17,7 +17,8 @@ jobs:
       - name: Setup environment
         run: |
           apt-get update && apt-get install -y git
-          pip install web.py anthropic pyyaml
+          # Install all core and secondary dependencies for the OpenLibrary/Infogami stack
+          pip install web.py anthropic pyyaml simplejson psycopg2-binary
           echo "USER=root" >> $GITHUB_ENV
 
       - name: Initialize Repositories
