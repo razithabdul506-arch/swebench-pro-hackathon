@@ -31,13 +31,20 @@ def main():
     {current_content}
     """
 
-    response = client.messages.create(
+   response = client.messages.create(
         model="claude-3-7-sonnet-20250219",
         max_tokens=4096,
-        system="Return the FULL file content with the fix. Do not use snippets.",
+        system="""You are a senior staff engineer. 
+        TASK: Add the 'find_staged_or_pending' method to the 'ImportItem' class.
+        
+        CRITICAL INSTRUCTIONS:
+        1. The method MUST be a @classmethod.
+        2. It MUST return a 'ResultSet' object (from infogami.queries).
+        3. You MUST provide the FULL content of the file in the 'write_file' tool.
+        4. Do not remove any existing methods or imports like 'Batch' or 'ImportItem'.""",
         tools=[{
             "name": "write_file",
-            "description": "Overwrite the file.",
+            "description": "Overwrite the file with the full corrected content.",
             "input_schema": {
                 "type": "object",
                 "properties": {
@@ -48,7 +55,7 @@ def main():
             }
         }],
         messages=[{"role": "user", "content": instruction}],
-    )
+    ) 
 
     for block in response.content:
         if block.type == "tool_use":
