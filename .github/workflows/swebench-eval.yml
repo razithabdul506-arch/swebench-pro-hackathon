@@ -17,11 +17,10 @@ jobs:
       - name: Setup environment
         run: |
           apt-get update && apt-get install -y git
-          # 🔥 FIX: Manually install missing dependencies
           pip install anthropic pyyaml
           echo "USER=root" >> $GITHUB_ENV
 
-      - name: Clone and setup OpenLibrary
+      - name: Initialize OpenLibrary repository
         working-directory: /testbed
         run: |
           git clone https://github.com/internetarchive/openlibrary.git .
@@ -30,13 +29,13 @@ jobs:
           git checkout 84cc4ed5697b83a849e9106a09bfed501169cc20
           git checkout c4eebe6677acc4629cb541a98d5e91311444f5d4 -- openlibrary/tests/core/test_imports.py
 
-      - name: Run pre-verification tests
+      - name: Execute pre-verification
         continue-on-error: true
         working-directory: /testbed
         run: |
           python -m pytest openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending -v > /tmp/pre_verification.log 2>&1 || true
 
-      - name: Run AI Agent
+      - name: Invoke AI Agent
         env:
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
         working-directory: /testbed
@@ -44,23 +43,22 @@ jobs:
           cp $GITHUB_WORKSPACE/scripts/run_claude.py .
           python run_claude.py --task-file $GITHUB_WORKSPACE/task.yaml
 
-      - name: Generate patch file
+      - name: Generate patch
         working-directory: /testbed
-        run: |
-          git diff > /tmp/changes.patch
+        run: git diff > /tmp/changes.patch
 
-      - name: Run post-verification tests
+      - name: Execute post-verification
         working-directory: /testbed
         run: |
           python -m pytest openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending -v > /tmp/post_verification.log 2>&1
 
-      - name: Extract metrics
+      - name: Compile metrics
         working-directory: /testbed
         run: |
           cp $GITHUB_WORKSPACE/scripts/extract_metrics.py .
           python extract_metrics.py
 
-      - name: Upload artifacts
+      - name: Publish evaluation artifacts
         uses: actions/upload-artifact@v4
         with:
           name: evaluation-results
