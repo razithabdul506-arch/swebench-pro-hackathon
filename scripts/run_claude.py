@@ -124,7 +124,7 @@ Files to modify:
     for _ in range(30):
 
         response = client.messages.create(
-            model="claude-3-5-sonnet-latest",
+            model="claude-3-haiku-20240307",
             max_tokens=8192,
             messages=messages,
             tools=tools
