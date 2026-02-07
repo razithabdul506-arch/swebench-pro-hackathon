@@ -15,7 +15,6 @@ def log_to_agent(entry):
         f.write(json.dumps(entry) + "\n")
 
 def write_file(file_path, content):
-    """Core tool for applying the code fix."""
     try:
         with open(file_path, 'w') as f:
             f.write(content)
@@ -33,31 +32,31 @@ def main():
         task = yaml.safe_load(f)
 
     api_key = os.environ.get("CLAUDE_API_KEY")
-    if not api_key:
-        sys.exit(1)
+    if not api_key: sys.exit(1)
 
     client = Anthropic(api_key=api_key)
-    instruction = f"Task: {task['description']}\nRequirements: {task['requirements']}\nInterface: {task['interface']}"
+    
+    # Context Loading
+    target_file = task['files_to_modify'][0]
+    current_content = ""
+    if os.path.exists(target_file):
+        with open(target_file, 'r') as f:
+            current_content = f.read()
+
+    instruction = f"Task: {task['description']}\n\nFile: {target_file}\nCurrent Content:\n{current_content}"
 
     with open(PROMPTS_MD_PATH, "w") as f:
-        f.write(f"# Evaluation Context\n\n{instruction}")
+        f.write(f"# Context\n\n{instruction}")
 
     log_to_agent({"type": "request", "content": instruction})
 
-    # 🔥 MODEL UPDATE: Using the specific version requested in the PDF
-    # If this fails, replace with 'claude-3-5-sonnet-20241022'
-    # Use the stable model to remove the deprecation warning
     response = client.messages.create(
-        model="claude-3-7-sonnet-20250219", 
+        model="claude-3-7-sonnet-20250219",
         max_tokens=4096,
-        system="""You are a senior staff engineer. 
-        IMPORTANT: When you use 'write_file', you must provide the FULL file content. 
-        Do not truncate the code. You must ensure 'ResultSet' is imported (from infogami.queries) 
-        and 'STAGED_SOURCES' is defined as a constant.
-        The final code must be syntactically perfect so pytest can collect the tests.""",
+        system="You are a senior engineer. Return the FULL file content when using write_file. Do not truncate. Ensure 'ResultSet' is imported from 'infogami.queries'.",
         tools=[{
             "name": "write_file",
-            "description": "Overwrite the file with the full, fixed content.",
+            "description": "Overwrite the file with full corrected content.",
             "input_schema": {
                 "type": "object",
                 "properties": {
@@ -73,15 +72,10 @@ def main():
     log_to_agent({"type": "response", "content": str(response.content)})
 
     if response.stop_reason == "tool_use":
-        for content_block in response.content:
-            if content_block.type == "tool_use" and content_block.name == "write_file":
-                result = write_file(content_block.input["file_path"], content_block.input["content"])
-                log_to_agent({
-                    "type": "tool_use", 
-                    "tool": "write_file", 
-                    "args": content_block.input, 
-                    "result": result
-                })
+        for block in response.content:
+            if block.type == "tool_use" and block.name == "write_file":
+                res = write_file(block.input["file_path"], block.input["content"])
+                log_to_agent({"type": "tool_use", "tool": "write_file", "result": res})
 
 if __name__ == "__main__":
     main()
