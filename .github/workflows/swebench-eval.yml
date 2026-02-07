@@ -17,7 +17,16 @@ jobs:
       - name: Setup environment
         run: |
           apt-get update && apt-get install -y git
-          pip install anthropic pyyaml
+          # Install core requirements
+          pip install web.py anthropic pyyaml
+          
+          # OpenLibrary requires infogami to be installed in editable mode
+          mkdir -p /testbed/infogami
+          git clone https://github.com/internetarchive/infogami.git /testbed/infogami
+          pip install -e /testbed/infogami
+          
+          # Set Python path to include both the codebase and our scripts
+          echo "PYTHONPATH=/testbed" >> $GITHUB_ENV
           echo "USER=root" >> $GITHUB_ENV
 
       - name: Initialize OpenLibrary repository
@@ -27,6 +36,7 @@ jobs:
           git reset --hard 84cc4ed5697b83a849e9106a09bfed501169cc20
           git clean -fd
           git checkout 84cc4ed5697b83a849e9106a09bfed501169cc20
+          # Ensure test file is present for evaluation
           git checkout c4eebe6677acc4629cb541a98d5e91311444f5d4 -- openlibrary/tests/core/test_imports.py
 
       - name: Execute pre-verification
@@ -50,16 +60,16 @@ jobs:
       - name: Execute post-verification
         working-directory: /testbed
         run: |
-          # Use '|| true' so the workflow doesn't stop, allowing us to cat the log
+          # Use '|| true' to capture the log even if collection or tests fail
           python -m pytest openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending -v > /tmp/post_verification.log 2>&1 || true
           
-          echo "--- DEBUG: POST-VERIFICATION ERROR LOG ---"
+          echo "--- DEBUG: POST-VERIFICATION LOG ---"
           cat /tmp/post_verification.log
           echo "--- END DEBUG LOG ---"
           
-          # This line ensures the workflow still fails if the tests didn't actually pass
+          # Strict check for passing status for the scoring script
           grep -q "PASSED" /tmp/post_verification.log
-          
+
       - name: Compile metrics
         working-directory: /testbed
         run: |
