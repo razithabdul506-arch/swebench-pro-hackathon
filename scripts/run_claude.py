@@ -2,17 +2,9 @@
 import os
 import sys
 import yaml
-import json
-from datetime import datetime, timezone
 from anthropic import Anthropic
 
-AGENT_LOG_PATH = "/tmp/agent.log"
 PROMPTS_MD_PATH = "/tmp/prompts.md"
-
-def log_to_agent(entry):
-    with open(AGENT_LOG_PATH, "a") as f:
-        entry["timestamp"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        f.write(json.dumps(entry) + "\n")
 
 def main():
     import argparse
@@ -24,7 +16,8 @@ def main():
         task = yaml.safe_load(f)
 
     api_key = os.environ.get("CLAUDE_API_KEY")
-    if not api_key: sys.exit(1)
+    if not api_key:
+        sys.exit(1)
 
     client = Anthropic(api_key=api_key)
     target_file = task['files_to_modify'][0]
@@ -33,13 +26,12 @@ def main():
         current_content = f.read()
 
     instruction = f"""
-    DEBUG: The test fails with 'AttributeError: type object ImportItem has no attribute find_staged_or_pending'.
+    The test fails with 'AttributeError: type object ImportItem has no attribute find_staged_or_pending'.
     
-    TASK: 
+    TASK:
     1. Import 'ResultSet' from 'infogami.queries'.
-    2. ADD the following method to the 'ImportItem' class. 
-    3. IMPORTANT: Ensure it is a @classmethod.
-    
+    2. Add the following method inside the 'ImportItem' class as a @classmethod:
+
     @classmethod
     def find_staged_or_pending(cls, ia_ids, sources=None):
         conds = [("ia_id", "in", ia_ids), ("status", "in", ["staged", "pending"])]
@@ -48,19 +40,18 @@ def main():
         items = cls.find(conds)
         return ResultSet(items)
 
-    Current File Content:
+    FILE CONTENT:
     {current_content}
     """
 
+    # Ensure prompts.md is created for hackathon requirements
     with open(PROMPTS_MD_PATH, "w") as f:
-        f.write(f"# AI Instructions\n\n{instruction}")
-
-    log_to_agent({"type": "request", "content": instruction})
+        f.write(f"# Instruction sent to AI\n\n{instruction}")
 
     response = client.messages.create(
         model="claude-3-7-sonnet-20250219",
         max_tokens=4096,
-        system="You are a meticulous engineer. Provide the FULL file content. Ensure the ImportItem class remains intact and only the new @classmethod is added correctly.",
+        system="Return the FULL file content. Ensure the ImportItem class has the new @classmethod. Use write_file.",
         tools=[{
             "name": "write_file",
             "description": "Overwrite the file.",
@@ -81,7 +72,6 @@ def main():
             if block.type == "tool_use":
                 with open(block.input["file_path"], 'w') as f:
                     f.write(block.input["content"])
-                log_to_agent({"type": "tool_use", "result": "Success"})
 
 if __name__ == "__main__":
     main()
