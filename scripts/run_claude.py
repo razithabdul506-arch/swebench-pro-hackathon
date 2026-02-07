@@ -11,12 +11,12 @@ PROMPTS_MD_PATH = "/tmp/prompts.md"
 
 def log_to_agent(entry):
     with open(AGENT_LOG_PATH, "a") as f:
-        # Professional ISO format for metrics extraction
+        # ISO-8601 compliant UTC timestamp for metrics extraction
         entry["timestamp"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         f.write(json.dumps(entry) + "\n")
 
 def write_file(file_path, content):
-    """Tool implementation to modify the codebase"""
+    """Tool implementation to allow the agent to modify the codebase"""
     try:
         with open(file_path, 'w') as f:
             f.write(content)
@@ -41,21 +41,23 @@ def main():
         sys.exit(1)
 
     client = Anthropic(api_key=api_key)
-    prompt = f"Task: {task['description']}\nRequirements: {task['requirements']}\nInterface: {task['interface']}"
+    
+    # Constructing the engineering context
+    instruction = f"Task: {task['description']}\nRequirements: {task['requirements']}\nInterface: {task['interface']}"
 
-    # Generate required prompts artifact
+    # Documentation of prompts as required by hackathon rules
     with open(PROMPTS_MD_PATH, "w") as f:
-        f.write(f"# Prompt Context\n\n{prompt}")
+        f.write(f"# Evaluation Context\n\n{instruction}")
 
-    log_to_agent({"type": "request", "content": prompt})
+    log_to_agent({"type": "request", "content": instruction})
 
-    # Call Claude with tool definitions
+    # Updated model ID to the most common stable alias
     response = client.messages.create(
-        model="claude-3-5-sonnet-20241022", 
+        model="claude-3-5-sonnet-20240620", 
         max_tokens=4096,
         tools=[{
             "name": "write_file",
-            "description": "Write content to a file",
+            "description": "Write content to a file to apply a fix",
             "input_schema": {
                 "type": "object",
                 "properties": {
@@ -65,22 +67,20 @@ def main():
                 "required": ["file_path", "content"]
             }
         }],
-        messages=[{"role": "user", "content": prompt}],
+        messages=[{"role": "user", "content": instruction}],
     )
 
     log_to_agent({"type": "response", "content": str(response.content)})
 
-    # Execute the tool if Claude requested it
     if response.stop_reason == "tool_use":
         tool_use = response.content[-1]
         if tool_use.name == "write_file":
-            # This call now works because write_file is defined above
-            res = write_file(tool_use.input["file_path"], tool_use.input["content"])
+            result = write_file(tool_use.input["file_path"], tool_use.input["content"])
             log_to_agent({
                 "type": "tool_use", 
                 "tool": "write_file", 
                 "args": tool_use.input, 
-                "result": res
+                "result": result
             })
 
 if __name__ == "__main__":
