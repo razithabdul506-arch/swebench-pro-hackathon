@@ -17,38 +17,28 @@ jobs:
       - name: Setup environment
         run: |
           apt-get update && apt-get install -y git libxml2-dev libxslt-dev
-          # Install every possible dependency to stop the import error loop
+          # Install all core dependencies
           pip install web.py anthropic pyyaml simplejson babel psycopg2-binary \
                       bleach markdown2 python-memcached lxml cryptography
+          
+          # 🔥 THE PERMANENT FIX: Install Infogami directly into Python's path
+          rm -rf /tmp/infogami_repo
+          git clone https://github.com/internetarchive/infogami.git /tmp/infogami_repo
+          cp -r /tmp/infogami_repo/infogami $(python -c "import site; print(site.getsitepackages()[0])")
+          
           echo "USER=root" >> $GITHUB_ENV
 
       - name: Initialize Repositories
         working-directory: /testbed
         run: |
-          # 1. Complete wipe of testbed
+          # Clean and clone OpenLibrary
           find . -mindepth 1 -delete
-          
-          # 2. Clone OpenLibrary
           git clone https://github.com/internetarchive/openlibrary.git .
           git reset --hard 84cc4ed5697b83a849e9106a09bfed501169cc20
           git clean -fd
           git checkout c4eebe6677acc4629cb541a98d5e91311444f5d4 -- openlibrary/tests/core/test_imports.py
-
-          # 3. 🔥 THE ULTIMATE INFOGAMI FIX
-          # We clone it outside, then move the INNER package to the root
-          rm -rf /tmp/infogami_repo
-          git clone https://github.com/internetarchive/infogami.git /tmp/infogami_repo
           
-          # Remove the empty placeholder in OpenLibrary
-          rm -rf /testbed/infogami
-          
-          # Move the actual source code folder to the root testbed
-          cp -r /tmp/infogami_repo/infogami /testbed/infogami
-          
-          # Install the parent repo in editable mode just in case
-          pip install -e /tmp/infogami_repo
-          
-          # 4. Set definitive PYTHONPATH
+          # Set PYTHONPATH to the testbed
           echo "PYTHONPATH=/testbed" >> $GITHUB_ENV
 
       - name: Execute pre-verification
