@@ -13,35 +13,18 @@ jobs:
 
     steps:
 
-      # ===============================
-      # Checkout YOUR repo
-      # ===============================
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ===============================
-      # Verify container
-      # ===============================
-      - name: Verify Docker Environment
-        run: |
-          echo "Inside Docker Container"
-          python --version
-          pwd
-          ls
-
-      # ===============================
-      # Install SDK + tools
-      # ===============================
       - name: Setup environment
         run: |
           apt-get update
           apt-get install -y git
-          pip install anthropic==0.25.0
-          pip install web.py Cython
+          pip install anthropic==0.25.0 web.py Cython
 
-      # ===============================
+      # =====================================
       # Clone OpenLibrary + Infogami
-      # ===============================
+      # =====================================
       - name: Clone OpenLibrary repository
         run: |
           mkdir -p /testbed
@@ -53,38 +36,33 @@ jobs:
           git clean -fd
           git checkout c4eebe6677acc4629cb541a98d5e91311444f5d4 -- openlibrary/tests/core/test_imports.py
 
-          echo "Cloning infogami..."
           rm -rf infogami
           git clone https://github.com/internetarchive/infogami.git infogami
 
-          echo "Installing dependencies..."
           pip install -r requirements.txt
           pip install -r requirements_test.txt
 
-          echo "Repo ready"
-          ls
-
-      # ===============================
-      # FIX USER ENV (CRITICAL)
-      # ===============================
-      - name: Fix missing USER env for infogami
+      # =====================================
+      # FIX ENV VAR (infogami needs USER)
+      # =====================================
+      - name: Fix USER env
         run: |
           echo "USER=root" >> $GITHUB_ENV
 
-      # ===============================
-      # PRE VERIFICATION
-      # ===============================
+      # =====================================
+      # PRE VERIFICATION (ONLY TARGET TEST)
+      # =====================================
       - name: Run pre-verification tests
         continue-on-error: true
         run: |
           cd /testbed
-          python -m pytest -k test_find_staged_or_pending -xvs > /tmp/pre_verification.log 2>&1 || true
+          python -m pytest openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending -xvs > /tmp/pre_verification.log 2>&1 || true
           cat /tmp/pre_verification.log
 
-      # ===============================
+      # =====================================
       # RUN CLAUDE
-      # ===============================
-      - name: Run Claude to generate fixes
+      # =====================================
+      - name: Run Claude
         env:
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
         run: |
@@ -92,36 +70,30 @@ jobs:
           cp $GITHUB_WORKSPACE/scripts/run_claude.py .
           python run_claude.py --task-file $GITHUB_WORKSPACE/task.yaml
 
-      # ===============================
+      # =====================================
       # SAVE PATCH
-      # ===============================
+      # =====================================
       - name: Generate patch file
         run: |
           cd /testbed
           git diff > /tmp/changes.patch
           cat /tmp/changes.patch
 
-      # ===============================
-      # POST VERIFICATION
-      # ===============================
+      # =====================================
+      # POST VERIFICATION (ONLY TARGET TEST)
+      # =====================================
       - name: Run post-verification tests
         run: |
           cd /testbed
-          python -m pytest -k test_find_staged_or_pending -xvs > /tmp/post_verification.log 2>&1
+          python -m pytest openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending -xvs > /tmp/post_verification.log 2>&1
           cat /tmp/post_verification.log
 
-      # ===============================
-      # EXTRACT METRICS
-      # ===============================
       - name: Extract metrics
         run: |
           cd /testbed
           cp $GITHUB_WORKSPACE/scripts/extract_metrics.py .
           python extract_metrics.py
 
-      # ===============================
-      # Upload artifacts
-      # ===============================
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
