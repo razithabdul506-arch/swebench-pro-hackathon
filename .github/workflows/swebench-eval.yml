@@ -17,18 +17,14 @@ jobs:
       - name: Setup environment
         run: |
           apt-get update && apt-get install -y git libxml2-dev libxslt-dev
-          # Install the full dependency stack
           pip install web.py anthropic pyyaml simplejson babel psycopg2-binary \
                       bleach markdown2 python-memcached lxml cryptography
           
-          # 🔥 THE ULTIMATE FIX:
-          # We clone infogami, find where Python stores its libraries, 
-          # and move the actual package there. This bypasses all path errors.
+          # Force install infogami into site-packages
           rm -rf /tmp/infogami_repo
           git clone https://github.com/internetarchive/infogami.git /tmp/infogami_repo
           SITE_PACKAGES=$(python3 -c "import site; print(site.getsitepackages()[0])")
           cp -r /tmp/infogami_repo/infogami $SITE_PACKAGES/
-          
           echo "USER=root" >> $GITHUB_ENV
 
       - name: Initialize OpenLibrary
@@ -52,7 +48,6 @@ jobs:
       - name: Execute post-verification
         working-directory: /testbed
         run: |
-          # The fix should now be applied. We run the test and cat the log for debugging.
           python3 -m pytest openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending -v > /tmp/post_verification.log 2>&1 || true
           echo "--- DEBUG LOG ---"
           cat /tmp/post_verification.log
