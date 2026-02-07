@@ -45,7 +45,7 @@ def main():
     instruction = f"Task: {task['description']}\n\nFile: {target_file}\nCurrent Content:\n{current_content}"
 
     with open(PROMPTS_MD_PATH, "w") as f:
-        f.write(f"# Evaluation Context\n\n{instruction}")
+        f.write(f"# Context\n\n{instruction}")
 
     log_to_agent({"type": "request", "content": instruction})
 
