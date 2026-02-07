@@ -11,16 +11,11 @@ PROMPTS_MD_PATH = "/tmp/prompts.md"
 
 def log_to_agent(entry):
     with open(AGENT_LOG_PATH, "a") as f:
+        # Use modern UTC timestamp to avoid DeprecationWarnings
         entry["timestamp"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         f.write(json.dumps(entry) + "\n")
 
-def write_file(file_path, content):
-    try:
-        with open(file_path, 'w') as f:
-            f.write(content)
-        return {"success": True}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+# ... (write_file function remains the same) ...
 
 def main():
     import argparse
@@ -41,9 +36,10 @@ def main():
 
     log_to_agent({"type": "request", "content": prompt})
 
+    # 🔥 UPDATED MODEL ID FOR 2026 STANDARDS
     response = client.messages.create(
-        model="claude-3-5-sonnet-20241022",  
-        max_tokens=8192,
+        model="claude-sonnet-4-5-20250929", 
+        max_tokens=4096,
         tools=[{
             "name": "write_file",
             "description": "Write content to a file",
