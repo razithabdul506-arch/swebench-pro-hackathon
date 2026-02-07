@@ -46,14 +46,20 @@ jobs:
           mkdir -p /testbed
           cd /testbed
 
+          # Clone OpenLibrary
           git clone https://github.com/internetarchive/openlibrary.git .
 
           git reset --hard 84cc4ed5697b83a849e9106a09bfed501169cc20
           git clean -fd
           git checkout c4eebe6677acc4629cb541a98d5e91311444f5d4 -- openlibrary/tests/core/test_imports.py
 
+          # ⭐ VERY IMPORTANT — clone infogami dependency
+          echo "Cloning infogami dependency..."
+          git clone https://github.com/internetarchive/infogami.git infogami
+
           echo "Repo ready"
           ls
+
 
       # ===============================
       # 🔥 INSTALL TEST DEPENDENCIES (FIXED LOCATION)
