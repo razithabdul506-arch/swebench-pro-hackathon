@@ -17,7 +17,7 @@ jobs:
       - name: Setup environment
         run: |
           apt-get update && apt-get install -y git libxml2-dev libxslt-dev
-          # Complete dependency stack including web.py and system tools
+          # Complete dependency stack to prevent further ModuleNotFoundErrors
           pip install web.py anthropic pyyaml simplejson babel psycopg2-binary \
                       bleach markdown2 python-memcached lxml cryptography
           echo "USER=root" >> $GITHUB_ENV
@@ -25,27 +25,26 @@ jobs:
       - name: Initialize Repositories
         working-directory: /testbed
         run: |
-          # Clean the workspace thoroughly
+          # 1. Clean the workspace thoroughly
           find . -mindepth 1 -delete
           
-          # Clone OpenLibrary
+          # 2. Clone OpenLibrary
           git clone https://github.com/internetarchive/openlibrary.git .
           git reset --hard 84cc4ed5697b83a849e9106a09bfed501169cc20
           git clean -fd
           git checkout c4eebe6677acc4629cb541a98d5e91311444f5d4 -- openlibrary/tests/core/test_imports.py
 
-          # Clone Infogami and handle its nested structure
+          # 3. Handle Infogami Dependency
           rm -rf infogami_repo
           git clone https://github.com/internetarchive/infogami.git infogami_repo
           
-          # 🔥 THE CRITICAL FIX: The python package is at infogami_repo/infogami
-          # We symlink it to the root so 'import infogami' works perfectly
-          ln -s /testbed/infogami_repo/infogami /testbed/infogami
+          # 🔥 THE CRITICAL FIX: Use -sf to FORCE the symbolic link, overwriting the existing folder
+          ln -sf /testbed/infogami_repo/infogami /testbed/infogami
           
-          # Install it in editable mode from the package root
+          # Install in editable mode
           pip install -e /testbed/infogami_repo
           
-          # Map PYTHONPATH to the testbed root and the infogami source
+          # 4. Final Path Setup
           echo "PYTHONPATH=/testbed:/testbed/infogami_repo" >> $GITHUB_ENV
 
       - name: Execute pre-verification
