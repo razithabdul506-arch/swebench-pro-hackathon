@@ -50,8 +50,16 @@ jobs:
       - name: Execute post-verification
         working-directory: /testbed
         run: |
-          python -m pytest openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending -v > /tmp/post_verification.log 2>&1
-
+          # Use '|| true' so the workflow doesn't stop, allowing us to cat the log
+          python -m pytest openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending -v > /tmp/post_verification.log 2>&1 || true
+          
+          echo "--- DEBUG: POST-VERIFICATION ERROR LOG ---"
+          cat /tmp/post_verification.log
+          echo "--- END DEBUG LOG ---"
+          
+          # This line ensures the workflow still fails if the tests didn't actually pass
+          grep -q "PASSED" /tmp/post_verification.log
+          
       - name: Compile metrics
         working-directory: /testbed
         run: |
