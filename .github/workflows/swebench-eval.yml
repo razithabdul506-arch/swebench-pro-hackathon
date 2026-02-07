@@ -23,20 +23,21 @@ jobs:
       - name: Initialize Repositories
         working-directory: /testbed
         run: |
-          # Clean directory properly
+          # 1. Clean directory properly
           find . -mindepth 1 -delete
           
-          # Clone OpenLibrary
+          # 2. Clone OpenLibrary
           git clone https://github.com/internetarchive/openlibrary.git .
           git reset --hard 84cc4ed5697b83a849e9106a09bfed501169cc20
           git clean -fd
           git checkout c4eebe6677acc4629cb541a98d5e91311444f5d4 -- openlibrary/tests/core/test_imports.py
 
-          # Clone and Install Infogami
+          # 3. 🔥 FIX: Remove the placeholder infogami directory before cloning the real one
+          rm -rf infogami
           git clone https://github.com/internetarchive/infogami.git infogami
           pip install -e infogami
           
-          # Set Paths
+          # 4. Set Paths
           echo "PYTHONPATH=/testbed:/testbed/infogami" >> $GITHUB_ENV
 
       - name: Execute pre-verification
