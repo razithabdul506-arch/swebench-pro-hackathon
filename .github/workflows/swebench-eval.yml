@@ -20,7 +20,7 @@ jobs:
           pip install web.py anthropic pyyaml simplejson babel psycopg2-binary \
                       bleach markdown2 python-memcached lxml cryptography
           
-          # Force install infogami into site-packages to ensure global import works
+          # Force install infogami into site-packages
           rm -rf /tmp/infogami_repo
           git clone https://github.com/internetarchive/infogami.git /tmp/infogami_repo
           SITE_PACKAGES=$(python3 -c "import site; print(site.getsitepackages()[0])")
