@@ -12,7 +12,7 @@ jobs:
   evaluate:
     runs-on: ubuntu-latest
 
-    # 🔥 EVERYTHING RUNS INSIDE DOCKER CONTAINER
+    # 🔥 EVERYTHING runs inside this Docker container
     container:
       image: manojva/openlibrary-python312:latest
       options: --user root
@@ -36,14 +36,13 @@ jobs:
           ls
 
       # ===============================
-      # Install Claude SDK + git
+      # Install ONLY required deps
       # ===============================
       - name: Setup environment
         run: |
           apt-get update
           apt-get install -y git
-          pip install anthropic
-          pip install Cython
+          pip install anthropic web.py Cython
 
       # ===============================
       # Clone OpenLibrary into /testbed
@@ -59,10 +58,6 @@ jobs:
           git clean -fd
           git checkout 84cc4ed5697b83a849e9106a09bfed501169cc20
           git checkout c4eebe6677acc4629cb541a98d5e91311444f5d4 -- openlibrary/tests/core/test_imports.py
-
-          echo "Installing OpenLibrary dependencies..."
-          pip install --no-build-isolation -e .
-
 
           echo "OpenLibrary ready"
           ls
