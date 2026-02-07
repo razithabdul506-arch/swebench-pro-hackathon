@@ -131,7 +131,7 @@ Files to modify:
         )
 
         text = ""
-        if response.content and hasattr(response.content[0],'text'):
+        if response.content and hasattr(response.content[0], "text"):
             text = response.content[0].text
 
         log_to_agent({"type":"response","content":text})
