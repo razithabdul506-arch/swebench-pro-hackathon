@@ -61,7 +61,8 @@ jobs:
           git checkout c4eebe6677acc4629cb541a98d5e91311444f5d4 -- openlibrary/tests/core/test_imports.py
 
           echo "Installing OpenLibrary dependencies..."
-          pip install -e .
+          pip install --no-build-isolation -e .
+
 
           echo "OpenLibrary ready"
           ls
