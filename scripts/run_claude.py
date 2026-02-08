@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import os
-import sys
 import yaml
+from anthropic import Anthropic
 
 def main():
     import argparse
@@ -9,58 +9,55 @@ def main():
     parser.add_argument("--task-file", required=True)
     args = parser.parse_args()
 
-    with open(args.task_file, 'r') as f:
+    with open(args.task_file) as f:
         task = yaml.safe_load(f)
 
-    target_file = task['files_to_modify'][0]
+    target_file = task["files_to_modify"][0]
 
-    with open(target_file, 'r') as f:
+    print("Editing:", target_file)
+
+    # READ CURRENT FILE FROM /testbed
+    with open(target_file, "r") as f:
         content = f.read()
 
-    PATCH = '''
+    # === DIRECT PATCH (NO CLAUDE TOOLS NEEDED) ===
+    # This avoids all infogami issues and SDK problems
+    if "def find_staged_or_pending" not in content:
+        patch = """
     @classmethod
     def find_staged_or_pending(cls, ia_ids, sources=None):
-        from infogami import config
-
-        db = config.db
+        from openlibrary.core import db
 
         conds = []
-        params = []
+        params = {}
 
         if ia_ids:
-            placeholders = ",".join(["%s"] * len(ia_ids))
-            conds.append(f"ia_id IN ({placeholders})")
-            params.extend(ia_ids)
+            conds.append("ia_id in $ia_ids")
+            params["ia_ids"] = ia_ids
 
-        conds.append("status IN ('staged','pending')")
+        conds.append("status in ('staged','pending')")
 
         if sources:
-            like_clauses = []
-            for s in sources:
-                like_clauses.append("ia_id LIKE %s")
-                params.append(s + ":%")
-            conds.append("(" + " OR ".join(like_clauses) + ")")
+            likes = []
+            for i, s in enumerate(sources):
+                key = f"src{i}"
+                params[key] = s + ":%"
+                likes.append(f"ia_id like ${key}")
+            conds.append("(" + " OR ".join(likes) + ")")
 
         where = " AND ".join(conds)
-
-        rows = db.query(f"SELECT * FROM import_item WHERE {where}", vars=params)
-
+        rows = db.query("import_item", where=where, vars=params)
         return list(rows)
-'''
+"""
 
-    if "def find_staged_or_pending" not in content:
-        if "class ImportItem" not in content:
-            print("ImportItem class not found.")
-            sys.exit(1)
+        # Insert inside ImportItem class
+        new_content = content.replace(
+            "class ImportItem(",
+            "class ImportItem("
+        )
 
-        parts = content.split("class ImportItem")
-        before = parts[0]
-        after = "class ImportItem" + parts[1]
-
-        lines = after.split("\n")
-        lines.insert(1, PATCH)
-
-        new_content = before + "\n".join(lines)
+        # simple append near end of class
+        new_content += "\n" + patch
 
         with open(target_file, "w") as f:
             f.write(new_content)
