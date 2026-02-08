@@ -18,13 +18,13 @@ jobs:
 
     steps:
       # ---------------------------------------------------
-      # Checkout your repository (scripts + workflow files)
+      # Checkout your repo (workflow + scripts)
       # ---------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # ---------------------------------------------------
-      # Install system + python dependencies
+      # Install dependencies
       # ---------------------------------------------------
       - name: Setup environment
         run: |
@@ -33,7 +33,7 @@ jobs:
           pip install web.py anthropic pyyaml simplejson babel psycopg2-binary \
                       bleach markdown2 python-memcached lxml cryptography
 
-          # Install infogami manually to avoid import errors
+          # Fix Infogami import issue
           rm -rf /tmp/infogami_repo
           git clone https://github.com/internetarchive/infogami.git /tmp/infogami_repo
 
@@ -43,7 +43,7 @@ jobs:
           echo "USER=root" >> $GITHUB_ENV
 
       # ---------------------------------------------------
-      # Setup OpenLibrary testbed
+      # Prepare OpenLibrary testbed
       # ---------------------------------------------------
       - name: Initialize OpenLibrary
         working-directory: /testbed
@@ -60,11 +60,10 @@ jobs:
           git checkout c4eebe6677acc4629cb541a98d5e91311444f5d4 -- openlibrary/tests/core/test_imports.py
 
           echo "PYTHONPATH=/testbed" >> $GITHUB_ENV
-
           ls -la
 
       # ---------------------------------------------------
-      # Pre-verification (EXPECTED TO FAIL)
+      # Pre-verification (EXPECTED FAIL)
       # ---------------------------------------------------
       - name: Execute pre-verification
         continue-on-error: true
@@ -79,7 +78,7 @@ jobs:
           cat /tmp/pre_verification.log || true
 
       # ---------------------------------------------------
-      # Run AI Coding Agent
+      # Run AI Agent
       # ---------------------------------------------------
       - name: Invoke AI Agent
         env:
@@ -94,9 +93,10 @@ jobs:
           python3 run_agent.py --task-file task.yaml
 
       # ---------------------------------------------------
-      # Generate git diff patch
+      # Generate Patch
       # ---------------------------------------------------
       - name: Generate Patch
+        if: always()
         working-directory: /testbed
         run: |
           echo "Generating changes.patch..."
@@ -104,7 +104,7 @@ jobs:
           cat /tmp/changes.patch || true
 
       # ---------------------------------------------------
-      # Post-verification (EXPECTED TO PASS)
+      # Post-verification (EXPECTED PASS)
       # ---------------------------------------------------
       - name: Execute post-verification
         working-directory: /testbed
@@ -121,19 +121,21 @@ jobs:
           grep -q "PASSED" /tmp/post_verification.log
 
       # ---------------------------------------------------
-      # Extract Metrics
+      # Compile metrics (ALWAYS RUN)
       # ---------------------------------------------------
       - name: Compile metrics
+        if: always()
         working-directory: /testbed
         run: |
           echo "Generating metrics..."
           cp $GITHUB_WORKSPACE/scripts/extract_metrics.py .
-          python3 extract_metrics.py
+          python3 extract_metrics.py || true
 
       # ---------------------------------------------------
-      # Upload Required Artifacts
+      # Upload artifacts (ALWAYS RUN)
       # ---------------------------------------------------
       - name: Publish evaluation artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: evaluation-results
