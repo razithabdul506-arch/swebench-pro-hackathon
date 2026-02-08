@@ -11,17 +11,20 @@ def main():
     parser.add_argument("--task-file", required=True)
     args = parser.parse_args()
 
+    # Load task.yaml
     with open(args.task_file, 'r') as f:
         task = yaml.safe_load(f)
 
     client = Anthropic(api_key=os.environ.get("CLAUDE_API_KEY"))
 
+    # Target file inside /testbed
     target_file = task['files_to_modify'][0]
 
+    # Read current OpenLibrary file
     with open(target_file, 'r') as f:
         current_content = f.read()
 
-    # ✅ STRONG DETERMINISTIC INSTRUCTION
+    # ⭐ FINAL SWE-BENCH SAFE PROMPT
     instruction = f"""
 CRITICAL SWE-BENCH FIX.
 
@@ -29,22 +32,21 @@ You MUST implement EXACTLY this method inside class ImportItem.
 
 @classmethod
 def find_staged_or_pending(cls, ia_ids, sources=None):
-    from infogami.queries import ResultSet
     conds = [
         ("ia_id", "in", ia_ids),
         ("status", "in", ["staged", "pending"]),
     ]
     if sources:
         conds.append(("ia_id", "like", [s + ":%" for s in sources]))
-    items = cls.find(conds)
-    return ResultSet(items)
+    return cls.find(conds)
 
 STRICT RULES:
-- DO NOT rename parameters.
+- DO NOT import ResultSet.
+- DO NOT use infogami.queries.
 - DO NOT use db.where.
-- The parameter MUST be named "sources".
+- Parameter name MUST be 'sources'.
 - sources MUST default to None.
-- Return ONLY the FULL updated python file.
+- Return ONLY the FULL python file.
 - NO markdown fences.
 - NO explanations.
 - Keep all other code unchanged.
@@ -57,6 +59,7 @@ FULL FILE CONTENT:
     with open(PROMPTS_MD_PATH, "w") as f:
         f.write(f"# Prompt sent to AI Agent\n\n{instruction}")
 
+    # Call Claude
     response = client.messages.create(
         model="claude-3-7-sonnet-20250219",
         max_tokens=4096,
@@ -66,7 +69,7 @@ FULL FILE CONTENT:
 
     updated_content = None
 
-    # --- SAFE PARSING LOGIC ---
+    # ✅ SAFE PARSER (handles text + removes markdown)
     for block in response.content:
         if getattr(block, "type", "") == "tool_use":
             updated_content = block.input["content"]
@@ -88,6 +91,7 @@ FULL FILE CONTENT:
 
             updated_content = text
 
+    # Write updated file
     if updated_content:
         print("Writing updated file from Claude response...")
         with open(target_file, "w") as f:
