@@ -51,7 +51,23 @@ FULL FILE CONTENT:
 
         # Case 2: Claude returned plain text
         elif getattr(block, "type", "") == "text":
-            updated_content = block.text
+            text = block.text.strip()
+        
+            # REMOVE markdown code fences if present
+            if text.startswith("```"):
+                lines = text.splitlines()
+        
+                # remove first ```python or ```
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+        
+                # remove last ```
+                if lines and lines[-1].startswith("```"):
+                    lines = lines[:-1]
+        
+                text = "\n".join(lines)
+        
+            updated_content = text
 
     if updated_content:
         print("Writing updated file from Claude response...")
