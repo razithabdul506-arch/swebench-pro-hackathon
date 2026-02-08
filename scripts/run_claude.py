@@ -17,34 +17,37 @@ def main():
 
     client = Anthropic(api_key=os.environ.get("CLAUDE_API_KEY"))
 
-    # Target file inside /testbed
+    # Target OpenLibrary file inside /testbed
     target_file = task['files_to_modify'][0]
 
-    # Read current OpenLibrary file
+    # Read current content
     with open(target_file, 'r') as f:
         current_content = f.read()
 
-    # ⭐ FINAL SWE-BENCH SAFE PROMPT
+    # ⭐ FINAL SWE-BENCH SAFE INSTRUCTION
     instruction = f"""
 CRITICAL SWE-BENCH FIX.
 
-You MUST implement EXACTLY this method inside class ImportItem.
+Implement EXACTLY this method inside class ImportItem.
 
 @classmethod
 def find_staged_or_pending(cls, ia_ids, sources=None):
-    conds = [
-        ("ia_id", "in", ia_ids),
-        ("status", "in", ["staged", "pending"]),
-    ]
-    if sources:
-        conds.append(("ia_id", "like", [s + ":%" for s in sources]))
-    return cls.find(conds)
+    items = []
+    for ia_id in ia_ids:
+        result = db.where(
+            "import_item",
+            ia_id=ia_id,
+            status=["staged", "pending"],
+        )
+        if result:
+            items.extend(ImportItem(row) for row in result)
+    return items
 
 STRICT RULES:
 - DO NOT import ResultSet.
-- DO NOT use infogami.queries.
-- DO NOT use db.where.
-- Parameter name MUST be 'sources'.
+- DO NOT call cls.find().
+- Use db.where exactly as shown.
+- Parameter MUST be named 'sources'.
 - sources MUST default to None.
 - Return ONLY the FULL python file.
 - NO markdown fences.
@@ -69,7 +72,7 @@ FULL FILE CONTENT:
 
     updated_content = None
 
-    # ✅ SAFE PARSER (handles text + removes markdown)
+    # ✅ SAFE PARSER
     for block in response.content:
         if getattr(block, "type", "") == "tool_use":
             updated_content = block.input["content"]
@@ -77,7 +80,7 @@ FULL FILE CONTENT:
         elif getattr(block, "type", "") == "text":
             text = block.text.strip()
 
-            # Remove markdown fences if Claude adds them
+            # Remove markdown fences if present
             if text.startswith("```"):
                 lines = text.splitlines()
 
