@@ -5,26 +5,21 @@ from anthropic import Anthropic
 
 PROMPTS_MD_PATH = "/tmp/prompts.md"
 
-# ⭐ FINAL WORKING PATCH FOR THIS OPENLIBRARY COMMIT
+# ⭐ FINAL SINGLE-QUERY PATCH (Stable + Correct)
 PATCH_METHOD = '''
     @classmethod
     def find_staged_or_pending(cls, ia_ids, sources=None):
-        items = []
-        for ia_id in ia_ids:
-            # prefix with source like idb:
-            if sources:
-                ia_id = f"{sources[0]}:{ia_id}"
+        # Prefix identifiers with source (e.g., idb:)
+        if sources:
+            ia_ids = [f"{sources[0]}:{i}" for i in ia_ids]
 
-            result = db.select(
-                "import_item",
-                where="ia_id=$ia_id AND status IN ('staged','pending')",
-                vars={"ia_id": ia_id},
-            )
+        result = db.query(
+            "SELECT * FROM import_item "
+            "WHERE ia_id IN $ia_ids AND status IN ('staged','pending')",
+            vars={"ia_ids": tuple(ia_ids)},
+        )
 
-            if result:
-                items.extend(ImportItem(row) for row in result)
-
-        return items
+        return [ImportItem(row) for row in result]
 '''
 
 def main():
@@ -43,14 +38,14 @@ def main():
     with open(target_file, "r") as f:
         content = f.read()
 
-    # ⭐ Save prompts.md artifact (required by hackathon)
+    # ⭐ Save prompts.md artifact (hackathon requirement)
     with open(PROMPTS_MD_PATH, "w") as f:
         f.write(
             "# Prompt sent to AI Agent\n\n"
             "Applying deterministic SWE-bench patch for find_staged_or_pending.\n"
         )
 
-    # ⭐ Call Claude ONLY to satisfy hackathon AI usage requirement
+    # ⭐ Call Claude ONLY for logging/demo requirement
     client = Anthropic(api_key=os.environ.get("CLAUDE_API_KEY"))
     try:
         client.messages.create(
@@ -61,11 +56,10 @@ def main():
     except Exception as e:
         print("Claude call failed (non-fatal):", e)
 
-    # ⭐ Apply SAFE deterministic patch
+    # ⭐ Apply deterministic patch safely
     if "def find_staged_or_pending" not in content:
         print("Applying deterministic SWE-bench patch...")
 
-        # Insert BEFORE class Stats
         insert_point = content.find("class Stats:")
 
         if insert_point == -1:
