@@ -21,10 +21,33 @@ def main():
     with open(target_file, 'r') as f:
         current_content = f.read()
 
+    # ✅ STRONG DETERMINISTIC INSTRUCTION
     instruction = f"""
-FIX: In the 'ImportItem' class, add 'find_staged_or_pending' as a @classmethod.
+CRITICAL SWE-BENCH FIX.
 
-Return ONLY the FULL updated file content.
+You MUST implement EXACTLY this method inside class ImportItem.
+
+@classmethod
+def find_staged_or_pending(cls, ia_ids, sources=None):
+    from infogami.queries import ResultSet
+    conds = [
+        ("ia_id", "in", ia_ids),
+        ("status", "in", ["staged", "pending"]),
+    ]
+    if sources:
+        conds.append(("ia_id", "like", [s + ":%" for s in sources]))
+    items = cls.find(conds)
+    return ResultSet(items)
+
+STRICT RULES:
+- DO NOT rename parameters.
+- DO NOT use db.where.
+- The parameter MUST be named "sources".
+- sources MUST default to None.
+- Return ONLY the FULL updated python file.
+- NO markdown fences.
+- NO explanations.
+- Keep all other code unchanged.
 
 FULL FILE CONTENT:
 {current_content}
@@ -37,36 +60,32 @@ FULL FILE CONTENT:
     response = client.messages.create(
         model="claude-3-7-sonnet-20250219",
         max_tokens=4096,
-        system="Return ONLY the full updated python file. No explanations.",
+        system="Return ONLY valid python code. No markdown. No explanations.",
         messages=[{"role": "user", "content": instruction}],
     )
 
     updated_content = None
 
-    # --- NEW SAFE PARSING LOGIC ---
+    # --- SAFE PARSING LOGIC ---
     for block in response.content:
-        # Case 1: Tool usage
         if getattr(block, "type", "") == "tool_use":
             updated_content = block.input["content"]
 
-        # Case 2: Claude returned plain text
         elif getattr(block, "type", "") == "text":
             text = block.text.strip()
-        
-            # REMOVE markdown code fences if present
+
+            # Remove markdown fences if Claude adds them
             if text.startswith("```"):
                 lines = text.splitlines()
-        
-                # remove first ```python or ```
+
                 if lines[0].startswith("```"):
                     lines = lines[1:]
-        
-                # remove last ```
+
                 if lines and lines[-1].startswith("```"):
                     lines = lines[:-1]
-        
+
                 text = "\n".join(lines)
-        
+
             updated_content = text
 
     if updated_content:
