@@ -2,7 +2,6 @@
 import os
 import sys
 import yaml
-from anthropic import Anthropic
 
 def main():
     import argparse
@@ -10,31 +9,45 @@ def main():
     parser.add_argument("--task-file", required=True)
     args = parser.parse_args()
 
-    # Load task
     with open(args.task_file, 'r') as f:
         task = yaml.safe_load(f)
 
-    client = Anthropic(api_key=os.environ.get("CLAUDE_API_KEY"))
-
     target_file = task['files_to_modify'][0]
 
-    # Read current file
     with open(target_file, 'r') as f:
         content = f.read()
 
-    # ---- PATCH CODE (FINAL CORRECT VERSION) ----
-    patch_code = '''
+    PATCH = '''
     @classmethod
     def find_staged_or_pending(cls, ia_ids, sources=None):
-        conds = [("ia_id", "in", ia_ids), ("status", "in", ["staged", "pending"])]
+        from infogami import config
+
+        db = config.db
+
+        conds = []
+        params = []
+
+        if ia_ids:
+            placeholders = ",".join(["%s"] * len(ia_ids))
+            conds.append(f"ia_id IN ({placeholders})")
+            params.extend(ia_ids)
+
+        conds.append("status IN ('staged','pending')")
 
         if sources:
-            conds.append(("ia_id", "like", [s + ":%" for s in sources]))
+            like_clauses = []
+            for s in sources:
+                like_clauses.append("ia_id LIKE %s")
+                params.append(s + ":%")
+            conds.append("(" + " OR ".join(like_clauses) + ")")
 
-        return cls.find(conds)
+        where = " AND ".join(conds)
+
+        rows = db.query(f"SELECT * FROM import_item WHERE {where}", vars=params)
+
+        return list(rows)
 '''
 
-    # Inject method ONLY if missing
     if "def find_staged_or_pending" not in content:
         if "class ImportItem" not in content:
             print("ImportItem class not found.")
@@ -44,17 +57,15 @@ def main():
         before = parts[0]
         after = "class ImportItem" + parts[1]
 
-        # insert patch after class declaration
         lines = after.split("\n")
-        insert_index = 1
+        lines.insert(1, PATCH)
 
-        lines.insert(insert_index, patch_code)
         new_content = before + "\n".join(lines)
 
         with open(target_file, "w") as f:
             f.write(new_content)
 
-        print("Patch applied successfully.")
+        print("Patch applied.")
     else:
         print("Method already exists.")
 
