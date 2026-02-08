@@ -2,69 +2,137 @@ name: SWE-bench Pro Evaluation
 
 on:
   workflow_dispatch:
+    inputs:
+      task_id:
+        description: 'Task ID to run'
+        required: true
+        default: 'internetarchive__openlibrary-c4eebe6677acc4629cb541a98d5e91311444f5d4'
 
 jobs:
   evaluate:
     runs-on: ubuntu-latest
+
     container:
       image: manojva/openlibrary-python312:latest
       options: --user root
 
     steps:
+      # ---------------------------------------------------
+      # Checkout your repository (scripts + workflow files)
+      # ---------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ---------------------------------------------------
+      # Install system + python dependencies
+      # ---------------------------------------------------
       - name: Setup environment
         run: |
           apt-get update && apt-get install -y git libxml2-dev libxslt-dev
+
           pip install web.py anthropic pyyaml simplejson babel psycopg2-binary \
                       bleach markdown2 python-memcached lxml cryptography
-          
-          # Stable site-packages install strategy to end the ModuleNotFoundError loop
+
+          # Install infogami manually to avoid import errors
           rm -rf /tmp/infogami_repo
           git clone https://github.com/internetarchive/infogami.git /tmp/infogami_repo
+
           SITE_PACKAGES=$(python3 -c "import site; print(site.getsitepackages()[0])")
           cp -r /tmp/infogami_repo/infogami $SITE_PACKAGES/
+
           echo "USER=root" >> $GITHUB_ENV
 
+      # ---------------------------------------------------
+      # Setup OpenLibrary testbed
+      # ---------------------------------------------------
       - name: Initialize OpenLibrary
         working-directory: /testbed
         run: |
-          find . -mindepth 1 -delete
+          echo "Preparing OpenLibrary repository..."
+
+          find . -mindepth 1 -delete || true
+
           git clone https://github.com/internetarchive/openlibrary.git .
+
           git reset --hard 84cc4ed5697b83a849e9106a09bfed501169cc20
           git clean -fd
+
           git checkout c4eebe6677acc4629cb541a98d5e91311444f5d4 -- openlibrary/tests/core/test_imports.py
+
           echo "PYTHONPATH=/testbed" >> $GITHUB_ENV
 
+          ls -la
+
+      # ---------------------------------------------------
+      # Pre-verification (EXPECTED TO FAIL)
+      # ---------------------------------------------------
       - name: Execute pre-verification
         continue-on-error: true
         working-directory: /testbed
         run: |
-          # Captures the baseline failure for the metrics
-          python3 -m pytest openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending -v > /tmp/pre_verification.log 2>&1 || true
+          echo "Running pre-verification tests..."
+          export PYTHONPATH=/testbed
 
+          python3 -m pytest openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending -xvs \
+          > /tmp/pre_verification.log 2>&1 || true
+
+          cat /tmp/pre_verification.log || true
+
+      # ---------------------------------------------------
+      # Run AI Coding Agent
+      # ---------------------------------------------------
       - name: Invoke AI Agent
         env:
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
         working-directory: /testbed
         run: |
-          cp $GITHUB_WORKSPACE/scripts/run_claude.py .
-          python3 run_claude.py --task-file $GITHUB_WORKSPACE/task.yaml
+          echo "Running AI agent..."
 
+          cp $GITHUB_WORKSPACE/scripts/run_claude.py ./run_agent.py
+          cp $GITHUB_WORKSPACE/task.yaml .
+
+          python3 run_agent.py --task-file task.yaml
+
+      # ---------------------------------------------------
+      # Generate git diff patch
+      # ---------------------------------------------------
+      - name: Generate Patch
+        working-directory: /testbed
+        run: |
+          echo "Generating changes.patch..."
+          git diff > /tmp/changes.patch || true
+          cat /tmp/changes.patch || true
+
+      # ---------------------------------------------------
+      # Post-verification (EXPECTED TO PASS)
+      # ---------------------------------------------------
       - name: Execute post-verification
         working-directory: /testbed
         run: |
-          python3 -m pytest openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending -v > /tmp/post_verification.log 2>&1 || true
+          echo "Running post-verification tests..."
+          export PYTHONPATH=/testbed
+
+          python3 -m pytest openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending -xvs \
+          > /tmp/post_verification.log 2>&1 || true
+
           cat /tmp/post_verification.log
+
+          # Fail workflow if tests did not pass
           grep -q "PASSED" /tmp/post_verification.log
 
+      # ---------------------------------------------------
+      # Extract Metrics
+      # ---------------------------------------------------
       - name: Compile metrics
         working-directory: /testbed
         run: |
+          echo "Generating metrics..."
           cp $GITHUB_WORKSPACE/scripts/extract_metrics.py .
           python3 extract_metrics.py
 
+      # ---------------------------------------------------
+      # Upload Required Artifacts
+      # ---------------------------------------------------
       - name: Publish evaluation artifacts
         uses: actions/upload-artifact@v4
         with:
