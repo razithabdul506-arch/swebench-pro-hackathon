@@ -19,13 +19,14 @@ def main():
     with open(target_file, 'r') as f:
         current_content = f.read()
 
+    # We give Claude a very strict role and the specific fix required
     instruction = f"""
     The test fails because 'ImportItem' is missing 'find_staged_or_pending'.
     
-    FIX: 
+    REQUIRED FIX:
     1. Import 'ResultSet' from 'infogami.queries'.
-    2. Find 'class ImportItem(Batch):' or similar.
-    3. ADD this method inside the class:
+    2. Add the following method INSIDE the 'ImportItem' class. 
+    3. It MUST be a @classmethod.
 
     @classmethod
     def find_staged_or_pending(cls, ia_ids, sources=None):
@@ -35,7 +36,7 @@ def main():
         items = cls.find(conds)
         return ResultSet(items)
 
-    FULL FILE CONTENT:
+    FILE CONTENT:
     {current_content}
     """
 
@@ -46,7 +47,7 @@ def main():
     response = client.messages.create(
         model="claude-3-7-sonnet-20250219",
         max_tokens=4096,
-        system="Return the FULL file content. Use @classmethod. Use write_file tool.",
+        system="Return the FULL file content. You MUST include the @classmethod decorator inside the class. Use write_file tool.",
         tools=[{
             "name": "write_file",
             "description": "Overwrite the file.",
