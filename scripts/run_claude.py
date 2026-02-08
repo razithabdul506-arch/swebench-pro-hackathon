@@ -19,36 +19,26 @@ def main():
     with open(target_file, 'r') as f:
         current_content = f.read()
 
-    # Create the required prompts.md
+    # Required logic for the hackathon
     instruction = f"""
-    The test fails with AttributeError: type object 'ImportItem' has no attribute 'find_staged_or_pending'.
+    TASK: In the 'ImportItem' class, add 'find_staged_or_pending' as a @classmethod.
+    Return 'ResultSet(items)' from 'infogami.queries'.
     
-    FIX REQUIREMENT:
-    1. At the top of {target_file}, add: from infogami.queries import ResultSet
-    2. Inside 'class ImportItem', add this method:
-
-    @classmethod
-    def find_staged_or_pending(cls, ia_ids, sources=None):
-        conds = [("ia_id", "in", ia_ids), ("status", "in", ["staged", "pending"])]
-        if sources:
-            conds.append(("ia_id", "like", [s + ":%" for s in sources]))
-        items = cls.find(conds)
-        return ResultSet(items)
-
     FILE CONTENT:
     {current_content}
     """
 
+    # Generate prompts.md required by the runner
     with open("/tmp/prompts.md", "w") as f:
         f.write(instruction)
 
     response = client.messages.create(
         model="claude-3-7-sonnet-20250219",
         max_tokens=4096,
-        system="You MUST return the FULL file content with the fix included. Ensure the method is a @classmethod. Use write_file.",
+        system="Return the FULL file content with the fix. Use @classmethod. Use write_file tool.",
         tools=[{
             "name": "write_file",
-            "description": "Overwrite the file.",
+            "description": "Save the file.",
             "input_schema": {
                 "type": "object",
                 "properties": {
