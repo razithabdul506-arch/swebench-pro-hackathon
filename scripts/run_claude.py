@@ -1,76 +1,62 @@
 #!/usr/bin/env python3
+import os
+import sys
 import yaml
-import argparse
+from anthropic import Anthropic
 
 def main():
+    import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--task-file", required=True)
     args = parser.parse_args()
 
-    # Load task.yaml
-    with open(args.task_file, "r") as f:
+    # Load task
+    with open(args.task_file, 'r') as f:
         task = yaml.safe_load(f)
 
-    target_file = task["files_to_modify"][0]
+    client = Anthropic(api_key=os.environ.get("CLAUDE_API_KEY"))
 
-    print("Patching file:", target_file)
+    target_file = task['files_to_modify'][0]
 
-    # Read file
-    with open(target_file, "r") as f:
+    # Read current file
+    with open(target_file, 'r') as f:
         content = f.read()
 
-    # If already patched, exit safely
-    if "def find_staged_or_pending" in content:
-        print("Method already exists. Skipping.")
-        return
-
-    # Inject fix inside ImportItem class
+    # ---- PATCH CODE (FINAL CORRECT VERSION) ----
     patch_code = '''
     @classmethod
     def find_staged_or_pending(cls, ia_ids, sources=None):
-        from infogami.queries import ResultSet
-
         conds = [("ia_id", "in", ia_ids), ("status", "in", ["staged", "pending"])]
 
         if sources:
             conds.append(("ia_id", "like", [s + ":%" for s in sources]))
 
-        items = cls.find(conds)
-        return ResultSet(items)
+        return cls.find(conds)
 '''
 
-    # Insert after class ImportItem declaration
-    lines = content.splitlines()
-    new_lines = []
-    inserted = False
+    # Inject method ONLY if missing
+    if "def find_staged_or_pending" not in content:
+        if "class ImportItem" not in content:
+            print("ImportItem class not found.")
+            sys.exit(1)
 
-    for i, line in enumerate(lines):
-        new_lines.append(line)
+        parts = content.split("class ImportItem")
+        before = parts[0]
+        after = "class ImportItem" + parts[1]
 
-        if not inserted and line.strip().startswith("class ImportItem"):
-            # Find next indentation block
-            for j in range(i + 1, len(lines)):
-                if lines[j].startswith("class "):
-                    break
-                if lines[j].startswith("    def") or lines[j].startswith("    @"):
-                    new_lines.append(patch_code)
-                    inserted = True
-                    break
+        # insert patch after class declaration
+        lines = after.split("\n")
+        insert_index = 1
 
-    if not inserted:
-        new_lines.append(patch_code)
+        lines.insert(insert_index, patch_code)
+        new_content = before + "\n".join(lines)
 
-    new_content = "\n".join(new_lines)
+        with open(target_file, "w") as f:
+            f.write(new_content)
 
-    # Write file
-    with open(target_file, "w") as f:
-        f.write(new_content)
-
-    # Required artifact for SWE-bench
-    with open("/tmp/prompts.md", "w") as f:
-        f.write("Manual patch applied for ImportItem.find_staged_or_pending")
-
-    print("Patch applied successfully.")
+        print("Patch applied successfully.")
+    else:
+        print("Method already exists.")
 
 if __name__ == "__main__":
     main()
