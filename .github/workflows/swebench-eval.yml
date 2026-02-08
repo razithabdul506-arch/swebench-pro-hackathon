@@ -17,14 +17,17 @@ jobs:
       - name: Setup environment
         run: |
           apt-get update && apt-get install -y git libxml2-dev libxslt-dev
+          # Install every possible dependency to stop the import error loop
           pip install web.py anthropic pyyaml simplejson babel psycopg2-binary \
                       bleach markdown2 python-memcached lxml cryptography
           
-          # Force install infogami to site-packages
+          # 🔥 THE PERMANENT FIX: Install Infogami directly into the system path
           rm -rf /tmp/infogami_repo
           git clone https://github.com/internetarchive/infogami.git /tmp/infogami_repo
+          # Find the exact site-packages folder and copy infogami source there
           SITE_PACKAGES=$(python3 -c "import site; print(site.getsitepackages()[0])")
           cp -r /tmp/infogami_repo/infogami $SITE_PACKAGES/
+          
           echo "USER=root" >> $GITHUB_ENV
 
       - name: Initialize OpenLibrary
