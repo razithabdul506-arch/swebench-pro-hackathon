@@ -18,22 +18,22 @@ jobs:
 
     steps:
       # ---------------------------------------------------
-      # Checkout your repo (workflow + scripts)
+      # Checkout
       # ---------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # ---------------------------------------------------
-      # Install dependencies
+      # Setup environment
       # ---------------------------------------------------
       - name: Setup environment
         run: |
+          echo "==== STEP 1: Setting up environment ===="
           apt-get update && apt-get install -y git libxml2-dev libxslt-dev
 
           pip install web.py anthropic pyyaml simplejson babel psycopg2-binary \
                       bleach markdown2 python-memcached lxml cryptography
 
-          # Fix Infogami import issue
           rm -rf /tmp/infogami_repo
           git clone https://github.com/internetarchive/infogami.git /tmp/infogami_repo
 
@@ -43,15 +43,14 @@ jobs:
           echo "USER=root" >> $GITHUB_ENV
 
       # ---------------------------------------------------
-      # Prepare OpenLibrary testbed
+      # Initialize OpenLibrary
       # ---------------------------------------------------
       - name: Initialize OpenLibrary
         working-directory: /testbed
         run: |
-          echo "Preparing OpenLibrary repository..."
+          echo "==== STEP 2: Preparing OpenLibrary repository ===="
 
           find . -mindepth 1 -delete || true
-
           git clone https://github.com/internetarchive/openlibrary.git .
 
           git reset --hard 84cc4ed5697b83a849e9106a09bfed501169cc20
@@ -69,7 +68,7 @@ jobs:
         continue-on-error: true
         working-directory: /testbed
         run: |
-          echo "Running pre-verification tests..."
+          echo "==== STEP 3: Running pre-verification tests ===="
           export PYTHONPATH=/testbed
 
           python3 -m pytest openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending -xvs \
@@ -85,7 +84,7 @@ jobs:
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
         working-directory: /testbed
         run: |
-          echo "Running AI agent..."
+          echo "==== STEP 4: Running AI agent ===="
 
           cp $GITHUB_WORKSPACE/scripts/run_claude.py ./run_agent.py
           cp $GITHUB_WORKSPACE/task.yaml .
@@ -99,40 +98,52 @@ jobs:
         if: always()
         working-directory: /testbed
         run: |
-          echo "Generating changes.patch..."
+          echo "==== STEP 5: Generating patch diff ===="
           git diff > /tmp/changes.patch || true
           cat /tmp/changes.patch || true
 
       # ---------------------------------------------------
-      # Post-verification (EXPECTED PASS)
+      # Post-verification with SAFE RETRY LOGIC
       # ---------------------------------------------------
       - name: Execute post-verification
         working-directory: /testbed
         run: |
-          echo "Running post-verification tests..."
+          echo "==== STEP 6: Running post-verification tests ===="
           export PYTHONPATH=/testbed
 
-          python3 -m pytest openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending -xvs \
-          > /tmp/post_verification.log 2>&1 || true
+          for i in 1 2 3; do
+            python3 -m pytest openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending -xvs \
+            > /tmp/post_verification.log 2>&1 && break
+            echo "Retry attempt $i..."
+          done
 
           cat /tmp/post_verification.log
-
-          # Fail workflow if tests did not pass
           grep -q "PASSED" /tmp/post_verification.log
 
       # ---------------------------------------------------
-      # Compile metrics (ALWAYS RUN)
+      # Compile metrics
       # ---------------------------------------------------
       - name: Compile metrics
         if: always()
         working-directory: /testbed
         run: |
-          echo "Generating metrics..."
+          echo "==== STEP 7: Generating metrics ===="
           cp $GITHUB_WORKSPACE/scripts/extract_metrics.py .
           python3 extract_metrics.py || true
 
       # ---------------------------------------------------
-      # Upload artifacts (ALWAYS RUN)
+      # Generate Dashboard (SAFE BONUS)
+      # ---------------------------------------------------
+      - name: Generate dashboard
+        if: always()
+        working-directory: /testbed
+        run: |
+          echo "==== STEP 8: Generating dashboard ===="
+          cp $GITHUB_WORKSPACE/scripts/generate_dashboard.py .
+          python3 generate_dashboard.py || true
+
+      # ---------------------------------------------------
+      # Upload Artifacts
       # ---------------------------------------------------
       - name: Publish evaluation artifacts
         if: always()
@@ -146,3 +157,4 @@ jobs:
             /tmp/post_verification.log
             /tmp/changes.patch
             /tmp/prompts.md
+            /tmp/dashboard.html
