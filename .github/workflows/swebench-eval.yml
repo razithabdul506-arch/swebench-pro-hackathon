@@ -24,11 +24,25 @@ jobs:
         uses: actions/checkout@v4
 
       # ---------------------------------------------------
+      # Start Timer (PRO DEMO MODE)
+      # ---------------------------------------------------
+      - name: Start runtime timer
+        run: |
+          echo "START_TIME=$(date +%s)" >> $GITHUB_ENV
+
+      # ---------------------------------------------------
       # Setup environment
       # ---------------------------------------------------
       - name: Setup environment
         run: |
-          echo "==== STEP 1: Setting up environment ===="
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🚀 SWE-bench Pro Evaluation Started"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          echo ""
+          echo "🧰 STEP 1/8 — Environment Setup"
+          echo "──────────────────────────────"
+
           apt-get update && apt-get install -y git libxml2-dev libxslt-dev
 
           pip install web.py anthropic pyyaml simplejson babel psycopg2-binary \
@@ -48,7 +62,9 @@ jobs:
       - name: Initialize OpenLibrary
         working-directory: /testbed
         run: |
-          echo "==== STEP 2: Preparing OpenLibrary repository ===="
+          echo ""
+          echo "📦 STEP 2/8 — Preparing OpenLibrary Testbed"
+          echo "──────────────────────────────"
 
           find . -mindepth 1 -delete || true
           git clone https://github.com/internetarchive/openlibrary.git .
@@ -59,16 +75,18 @@ jobs:
           git checkout c4eebe6677acc4629cb541a98d5e91311444f5d4 -- openlibrary/tests/core/test_imports.py
 
           echo "PYTHONPATH=/testbed" >> $GITHUB_ENV
-          ls -la
 
       # ---------------------------------------------------
-      # Pre-verification (EXPECTED FAIL)
+      # Pre-verification
       # ---------------------------------------------------
       - name: Execute pre-verification
         continue-on-error: true
         working-directory: /testbed
         run: |
-          echo "==== STEP 3: Running pre-verification tests ===="
+          echo ""
+          echo "🧪 STEP 3/8 — Pre-Verification (Expected Fail)"
+          echo "──────────────────────────────"
+
           export PYTHONPATH=/testbed
 
           python3 -m pytest openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending -xvs \
@@ -77,14 +95,16 @@ jobs:
           cat /tmp/pre_verification.log || true
 
       # ---------------------------------------------------
-      # Run AI Agent
+      # AI Agent
       # ---------------------------------------------------
       - name: Invoke AI Agent
         env:
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
         working-directory: /testbed
         run: |
-          echo "==== STEP 4: Running AI agent ===="
+          echo ""
+          echo "🧠 STEP 4/8 — AI Agent Executing..."
+          echo "──────────────────────────────"
 
           cp $GITHUB_WORKSPACE/scripts/run_claude.py ./run_agent.py
           cp $GITHUB_WORKSPACE/task.yaml .
@@ -98,17 +118,23 @@ jobs:
         if: always()
         working-directory: /testbed
         run: |
-          echo "==== STEP 5: Generating patch diff ===="
+          echo ""
+          echo "🧾 STEP 5/8 — Generating Patch"
+          echo "──────────────────────────────"
+
           git diff > /tmp/changes.patch || true
           cat /tmp/changes.patch || true
 
       # ---------------------------------------------------
-      # Post-verification with SAFE RETRY LOGIC
+      # Post-verification with RETRY
       # ---------------------------------------------------
       - name: Execute post-verification
         working-directory: /testbed
         run: |
-          echo "==== STEP 6: Running post-verification tests ===="
+          echo ""
+          echo "✅ STEP 6/8 — Post-Verification (Expected Pass)"
+          echo "──────────────────────────────"
+
           export PYTHONPATH=/testbed
 
           for i in 1 2 3; do
@@ -127,20 +153,40 @@ jobs:
         if: always()
         working-directory: /testbed
         run: |
-          echo "==== STEP 7: Generating metrics ===="
+          echo ""
+          echo "📊 STEP 7/8 — Metrics Extraction"
+          echo "──────────────────────────────"
+
           cp $GITHUB_WORKSPACE/scripts/extract_metrics.py .
           python3 extract_metrics.py || true
 
       # ---------------------------------------------------
-      # Generate Dashboard (SAFE BONUS)
+      # Generate Dashboard
       # ---------------------------------------------------
       - name: Generate dashboard
         if: always()
         working-directory: /testbed
         run: |
-          echo "==== STEP 8: Generating dashboard ===="
+          echo ""
+          echo "📈 STEP 8/8 — Dashboard Generation"
+          echo "──────────────────────────────"
+
           cp $GITHUB_WORKSPACE/scripts/generate_dashboard.py .
           python3 generate_dashboard.py || true
+
+      # ---------------------------------------------------
+      # Show Runtime (PRO DEMO MODE)
+      # ---------------------------------------------------
+      - name: Show runtime summary
+        if: always()
+        run: |
+          END_TIME=$(date +%s)
+          RUNTIME=$((END_TIME - START_TIME))
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "⏱️ Total Runtime: ${RUNTIME} seconds"
+          echo "🎉 SWE-bench Evaluation Complete"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
       # ---------------------------------------------------
       # Upload Artifacts
